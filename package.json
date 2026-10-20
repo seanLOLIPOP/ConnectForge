@@ -1,0 +1,18 @@
+{
+  "name": "si-remote", "version": "0.2.0", "private": true,
+  "description": "Portable remote desktop for SI accounts", "author": "SI",
+  "main": "app/main.cjs",
+  "scripts": {"start":"electron .", "test":"node --test test/*.test.mjs", "server":"node server/start.mjs", "build:win":"electron-builder --win portable zip --x64", "build:linux":"electron-builder --linux AppImage tar.gz --x64", "build:mac":"electron-builder --mac zip --x64 --arm64"},
+  "dependencies": {"koffi":"3.3.3", "ws":"8.22.0"},
+  "devDependencies": {"electron":"44.9.1", "electron-builder":"26.15.3"},
+  "build": {
+    "appId":"com.si.remote", "productName":"SI Remote", "asar":true,
+    "files":["app/**/*","assets/server.json","assets/server-ca.pem","assets/icon.png","package.json"],
+    "asarUnpack":["node_modules/koffi/**"],
+    "directories":{"output":"dist"},
+    "win":{"target":["portable","zip"],"icon":"assets/icon.ico","signAndEditExecutable":false,"extraResources":[{"from":"vendor/cloudflared/win32-x64","to":"cloudflared"}]},
+    "portable":{"artifactName":"SI-Remote-${version}-Windows-Portable.exe","useZip":true},
+    "linux":{"target":["AppImage","tar.gz"],"icon":"assets/icon.png","category":"Network","artifactName":"SI-Remote-${version}-Linux-${arch}.${ext}","extraResources":[{"from":"vendor/cloudflared/linux-x64","to":"cloudflared"}]},
+    "mac":{"target":["zip"],"category":"public.app-category.utilities","hardenedRuntime":true,"entitlements":"assets/entitlements.mac.plist","entitlementsInherit":"assets/entitlements.mac.plist","extendInfo":{"NSMicrophoneUsageDescription":"Optional remote desktop audio.","NSScreenCaptureUsageDescription":"Share your desktop with another device signed in to your SI account."},"artifactName":"SI-Remote-${version}-macOS-${arch}.${ext}","extraResources":[{"from":"vendor/cloudflared/darwin-${arch}","to":"cloudflared"}]}
+  }
+}

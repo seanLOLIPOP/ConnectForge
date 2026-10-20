@@ -1,0 +1,16 @@
+node_modules/
+dist/
+data/
+*.key
+*.log
+.env
+SI Remote Data/
+test/*-profile/
+test/*.local.json
+test/*-result.json*
+login-preview.png*
+vendor/
+.publish/
+.tools/
+test/*.png*
+test/*.json*

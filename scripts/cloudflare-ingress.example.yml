@@ -1,0 +1,12 @@
+# Merge these rules BEFORE the existing catch-all in crafty-dashboard's local
+# config. Preserve its existing tunnel UUID, credentials, routes and settings.
+# Both routes are raw TCP; TLS is verified by the app using the bundled public
+# server certificate, and media is protected by WebRTC DTLS.
+# Create CNAMEs for each hostname pointing to the EXISTING tunnel's
+# 184fbcab-ad17-475c-9e55-e4405e035fe1.cfargotunnel.com.
+ingress:
+  - hostname: connectforge.mcseanilog.com
+    service: tcp://192.168.4.68:8443
+  - hostname: connectforge-relay.mcseanilog.com
+    service: tcp://192.168.4.68:3478
+  # ...existing routes and catch-all...

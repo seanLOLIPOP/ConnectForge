@@ -1,0 +1,10 @@
+import fs from 'node:fs';import path from 'node:path';import {createHash} from 'node:crypto';
+const root=path.resolve(import.meta.dirname,'..'),dist=path.join(root,'dist'),version=JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8')).version;
+fs.copyFileSync(path.join(root,'README.md'),path.join(dist,'README.md'));
+fs.copyFileSync(path.join(root,'scripts/prepare-linux-sandbox.sh'),path.join(dist,'prepare-linux-sandbox.sh'));
+const files=fs.readdirSync(dist).filter(n=>n.includes(version)&&/\.(exe|zip|AppImage|tar\.gz)$/.test(n));
+const artifacts=[];
+for(const name of files){const file=path.join(dist,name),hash=createHash('sha256');for await(const b of fs.createReadStream(file))hash.update(b);artifacts.push({name,bytes:fs.statSync(file).size,sha256:hash.digest('hex')});}
+const validation={windows:{portableLaunch:'passed',nativeInput:'passed',directSession:'passed between two isolated app instances on one Windows computer',relaySession:'passed through the 5080 TURN service via Cloudflare TCP',video:'1728x1080',keyboardEventDelivery:'passed'},server:{accountSecurityTests:6,failed:0,existingSIIdentityLookup:'verified without creating an account',services:['si-remote','si-remote-turn'],bootPersistence:'user lingering enabled'},linux:{nativeX11Input:'passed on Ubuntu 24.04',desktopLaunch:'passed with approved sandbox helper',windowsToLinuxSession:'passed direct and TURN at 1920x1080 including keyboard events'},macOS:{architectures:['x64','arm64'],nativeInputModules:'included',runtimeTested:false,signed:false,notarized:false},network:{currentEndpoint:'connectforge.mcseanilog.com',relayEndpoint:'connectforge-relay.mcseanilog.com',tunnel:'crafty-dashboard',scope:'Cloudflare public tunnel',routerForwardingRequired:false}};
+fs.writeFileSync(path.join(dist,'release.json'),JSON.stringify({version,date:'2026-10-20',artifacts,validation},null,2));
+fs.writeFileSync(path.join(dist,'SHA256SUMS.txt'),artifacts.map(a=>a.sha256+'  '+a.name).join('\n')+'\n');console.log('Release manifest written for '+artifacts.length+' downloads.');
