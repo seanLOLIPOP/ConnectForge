@@ -1,16 +1,16 @@
 # ConnectForge (SI Remote) — portable preview
 
-Download Windows/Linux packages from the [v0.2.1 preview release](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.2.1). Mac packaging repairs are in v0.2.2.
+Download the [v0.3.0 portable preview](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.3.0) for Windows, Linux, and Mac.
 
 Built October 20, 2026. A working remote desktop preview with SI account login, owned-device discovery, approval or explicitly enabled unattended access, screen streaming, native keyboard/mouse control, direct encrypted WebRTC connections, and an authenticated TURN relay on the 5080 server.
 
 ## GPU acceleration
 
-v0.2.1 prefers H.264 to use the operating system’s hardware encoder and decoder when available, keeping other codecs for compatibility. The host sharing banner shows GPU/CPU encoding; the viewer toolbar shows GPU/CPU decoding, codec, frame rate, and network round-trip time. An unknown status means WebRTC did not report acceleration. GPU availability depends on the OS, driver, and hardware; H.264 can also run in software. This change does not require a GPU on the relay server or guarantee lower latency. Capture remains at 24 FPS ideal, 30 FPS maximum. Windows NVIDIA H.264 encoding and D3D11 decoding were verified; Linux/macOS hardware acceleration has not been verified.
+v0.3.0 prefers H.264 to use the operating system’s hardware encoder and decoder when available, keeping other codecs for compatibility. The host sharing banner shows GPU/CPU encoding; the viewer toolbar shows GPU/CPU decoding, codec, frame rate, and network round-trip time. An unknown status means WebRTC did not report acceleration. GPU availability depends on the OS, driver, and hardware; H.264 can also run in software. This change does not require a GPU on the relay server or guarantee lower latency. Capture remains at 24 FPS ideal, 30 FPS maximum. Windows NVIDIA H.264 encoding and D3D11 decoding were verified; Linux/macOS hardware acceleration has not been verified.
 
 ## Run
 
-**Windows:** run `SI-Remote-0.2.1-Windows-Portable.exe`. No installer. Alternatively extract the Windows ZIP and run `SI Remote.exe` from that folder.
+**Windows:** run `SI-Remote-0.3.0-Windows-Portable.exe`. No installer. Alternatively extract the Windows ZIP and run `SI Remote.exe` from that folder.
 
 Windows and macOS builds are not code-signed. These are private preview downloads, not signed public-store releases.
 
@@ -91,8 +91,16 @@ Verified on Windows: app launch, portable executable/ZIP packaging, native input
 
 Linux X11 app launch passed on Ubuntu 24.04 after the one-time administrator preparation of Chromium's sandbox helper. A Windows viewer controlling the Linux 5080 passed 1920×1080 screen streaming, direct and TURN relay paths, and native keyboard event delivery. The sandbox stayed enabled. On other Ubuntu hosts, run `bash scripts/prepare-linux-sandbox.sh /absolute/path/to/extracted-app` and enter the sudo password locally if required. Other Linux systems may support Chromium's user-namespace sandbox without this setup.
 
-v0.2.2 Mac packages are built and signed on macOS; Apple Silicon launch and native input initialization passed, while full Mac remote-control sessions and Intel runtime remain unverified. Full cross-platform sessions need device testing. This preview has no file transfer, clipboard sync, audio, monitor picker, secure-desktop support, auto-start service, or automatic updates. It shares the first available display. It is a usable preview, not a fully validated RustDesk replacement.
+v0.2.2 Mac packages are built and signed on macOS; Apple Silicon launch and native input initialization passed, while full Mac remote-control sessions and Intel runtime remain unverified. Full cross-platform sessions need device testing. This preview has no file transfer, audio, monitor picker, secure-desktop support, auto-start service, or automatic updates. It shares the first available display. It is a usable preview, not a fully validated RustDesk replacement.
 
 ## Mac release integrity
 
 Build Mac releases on macOS with `pnpm build:mac`; cross-platform Mac packaging is rejected because it cannot correctly sign the final bundle. Both Darwin native input packages are explicit optional dependencies and installed for both architectures. The build checks their presence and validates bundle, native module, and Cloudflare signatures. Default signing is ad-hoc for local testing. Public distribution still requires a Developer ID Application certificate and notarization: set `SI_REMOTE_MAC_IDENTITY` to that identity and configure electron-builder’s Apple notarization credentials locally. Do not commit credentials. The portable app is a ZIP containing SI Remote.app, with no installer. macOS 13+ is required; allow Screen Recording, Accessibility, and Local Network as needed for hosting and direct connections.
+
+## Shared text clipboard and saved history (v0.3.0)
+
+During a session, open Clipboard on both computers and enable sharing on each. Only subsequent text copies are shared; the clipboard contents present before opt-in are not uploaded. Copies travel on a separate encrypted WebRTC data channel through the direct or relay path. Older clients keep screen/input compatibility but need an update for clipboard sharing. Sharing resets to off at disconnect and when the connection is rebuilt for relay fallback.
+
+History holds 30 distinct text items up to 16 KB each. Open This computer → Clipboard history to use saved items later. Copies are saved locally under the signed-in SI account, encrypted using Electron safeStorage and the OS credential store. If secure encryption is unavailable, history stays in memory only. Signing out clears memory but retains encrypted history for that same account; other accounts cannot access it. History is not stored on the server or uploaded as a backlog on reconnect. Each participating computer keeps its own saved copy. Clear saved history removes that computer’s saved history; it does not erase the OS clipboard or another computer’s history. Images, files, and rich-text formats are not supported.
+
+Verified using isolated per-process clipboards in a full Windows app session: text transferred in both directions over direct and TURN routes. Eight clipboard persistence/isolation/bounds/race tests and six existing account security tests pass. Mac/Linux clipboard runtime remains unverified.

@@ -42,10 +42,12 @@ function addScreenTrack(pc,track,stream){
   const sender=pc.addTrack(track,stream);preferHardwareCodec(pc.getTransceivers().find(t=>t.sender===sender));
 }
 function peer(s,relay=false){
+  if(s.clipboardEnabled)window.si.clipboardEnable({session:s.id,enabled:false}).catch(()=>{});
+  s.clipboardEnabled=false;s.peerClipboardEnabled=false;s.clipboardChannel=null;s.peerClipboard=false;
   const pc=new RTCPeerConnection({iceServers:s.iceServers,iceTransportPolicy:relay?'relay':'all'});s.pc=pc;s.candidates=[];s.remoteReady=false;s.relay=relay;
   pc.onicecandidate=e=>{if(e.candidate)window.si.signal({session:s.id,payload:{kind:'candidate',candidate:e.candidate.toJSON()}}).catch(e=>toast(e.message));};
   pc.ontrack=e=>{$('remote-video').srcObject=e.streams[0]||new MediaStream([e.track]);$('viewer-message').hidden=true;};
-  pc.ondatachannel=e=>bindChannel(s,e.channel);
+  pc.ondatachannel=e=>{if(e.channel.label==='input')bindChannel(s,e.channel);else if(e.channel.label==='clipboard-v1'&&s.peerClipboard)bindClipboard(s,e.channel);};
   pc.onconnectionstatechange=()=>{
     if(current!==s||s.pc!==pc)return;
     if(pc.connectionState==='connected'){clearTimeout(s.timeout);$('viewer-message').hidden=true;updateStats(s);}
@@ -65,6 +67,37 @@ function bindChannel(s,channel){
   };
   channel.onclose=()=>{if(s.role==='host')window.si.release(s.id);};
 }
+let clipboardState={entries:[],persistent:false,enabled:false};
+function clipboardStatus(){
+  const s=current,ready=s?.clipboardChannel?.readyState==='open';
+  for(const id of ['clipboard-viewer','clipboard-host'])$(id).textContent=s?.clipboardEnabled?(s.peerClipboardEnabled?'Clipboard · on':'Clipboard · waiting'):'Clipboard';
+  $('clipboard-enabled').disabled=!ready;$('clipboard-enabled').checked=!!s?.clipboardEnabled;
+  $('clipboard-status').textContent=[!s?'No active session':!ready?'Update both apps to use shared clipboard':s.clipboardEnabled&&s.peerClipboardEnabled?'Sharing text in both directions':s.clipboardEnabled?'Waiting for clipboard sharing to be enabled on the other computer':'Clipboard sharing is off',clipboardState.persistent?'History saved encrypted on this computer':'History kept in memory: secure OS storage is unavailable'].join(' · ');
+}
+function renderClipboard(b){
+  clipboardState=b;if(current)current.clipboardEnabled=b.enabled&&b.session===current.id;
+  $('clipboard-items').replaceChildren();
+  for(const item of b.entries||[]){const row=document.createElement('div');row.className='clipboard-item';const preview=document.createElement('pre');preview.textContent=item.text.slice(0,180);const copy=document.createElement('button');copy.className='secondary';copy.textContent='Copy';copy.onclick=attempt(async()=>{await window.si.clipboardCopy(item.id);toast('Copied'+(current?.clipboardEnabled&&current.peerClipboardEnabled?' and shared':''));});row.append(preview,copy);$('clipboard-items').append(row);}
+  if(!b.entries?.length){const empty=document.createElement('p');empty.className='muted';empty.textContent='No saved text copies yet.';$('clipboard-items').append(empty);}
+  clipboardStatus();if(b.error)toast(b.error);
+}
+async function openClipboard(){renderClipboard(await window.si.clipboardList());$('clipboard-dialog').showModal();}
+for(const id of ['clipboard-viewer','clipboard-host','clipboard-saved'])$(id).onclick=attempt(openClipboard);
+$('clipboard-close').onclick=()=>$('clipboard-dialog').close();
+$('clipboard-clear').onclick=attempt(async()=>{await window.si.clipboardClear();renderClipboard(await window.si.clipboardList());});
+$('clipboard-enabled').onchange=attempt(async()=>{const s=current;if(!s)return;const b=await window.si.clipboardEnable({session:s.id,enabled:$('clipboard-enabled').checked});if(current!==s)return;renderClipboard(b);if(s.clipboardChannel?.readyState==='open')s.clipboardChannel.send(s.clipboardEnabled?'S1':'S0');});
+function bindClipboard(s,channel){
+  if(s.clipboardChannel){channel.close();return;}s.clipboardChannel=channel;
+  channel.onopen=()=>{if(current!==s)return;channel.send(s.clipboardEnabled?'S1':'S0');clipboardStatus();};
+  let received=0;
+  channel.onmessage=e=>{
+    if(current!==s||s.clipboardChannel!==channel||typeof e.data!=='string'||e.data.length>16385)return;
+    if(e.data==='S1'||e.data==='S0'){s.peerClipboardEnabled=e.data==='S1';clipboardStatus();return;}
+    if(e.data[0]!=='T'||!s.clipboardEnabled||!s.peerClipboardEnabled||Date.now()-received<250)return;
+    received=Date.now();window.si.clipboardReceive({session:s.id,text:e.data.slice(1)}).catch(e=>toast(e.message));
+  };
+  channel.onclose=()=>{if(current!==s||s.clipboardChannel!==channel)return;s.clipboardEnabled=false;s.peerClipboardEnabled=false;window.si.clipboardEnable({session:s.id,enabled:false}).catch(()=>{});clipboardStatus();};
+}
 async function startHost(b){
   closeLocal();const s=current={id:b.session,role:'host',iceServers:b.iceServers,stream:null,channel:null};peer(s);$('sharing-banner').hidden=false;
   s.ready=(async()=>{
@@ -79,17 +112,18 @@ async function startViewer(b){
 }
 async function offer(s,relay){
   if(s.pc){s.pc.onconnectionstatechange=null;s.pc.close();}const pc=peer(s,relay);bindChannel(s,pc.createDataChannel('input',{ordered:true}));preferHardwareCodec(pc.addTransceiver('video',{direction:'recvonly'}));
-  await pc.setLocalDescription(await pc.createOffer());await window.si.signal({session:s.id,payload:{kind:'offer',description:pc.localDescription.toJSON()}});
+  await pc.setLocalDescription(await pc.createOffer());await window.si.signal({session:s.id,payload:{kind:'offer',description:pc.localDescription.toJSON(),clipboardVersion:1}});
 }
 async function signal(b){
   const s=current;if(!s||s.id!==b.session)return;const p=b.payload;
   if(p.kind==='restart'&&s.role==='host'){await s.ready;if(s.pc){s.pc.onconnectionstatechange=null;s.pc.close();}peer(s,p.relay===true);return;}
   if(p.kind==='candidate'){if(s.remoteReady)await s.pc.addIceCandidate(p.candidate);else s.candidates.push(p.candidate);return;}
   if(p.kind==='offer'&&s.role==='host'){
-    await s.ready;if(current!==s)return;const pc=s.pc;await pc.setRemoteDescription(p.description);for(const t of pc.getTransceivers())preferHardwareCodec(t);s.remoteReady=true;for(const c of s.candidates)await pc.addIceCandidate(c);s.candidates=[];await pc.setLocalDescription(await pc.createAnswer());await window.si.signal({session:s.id,payload:{kind:'answer',description:pc.localDescription.toJSON()}});
+    s.peerClipboard=p.clipboardVersion===1;
+    await s.ready;if(current!==s)return;const pc=s.pc;await pc.setRemoteDescription(p.description);for(const t of pc.getTransceivers())preferHardwareCodec(t);s.remoteReady=true;for(const c of s.candidates)await pc.addIceCandidate(c);s.candidates=[];await pc.setLocalDescription(await pc.createAnswer());await window.si.signal({session:s.id,payload:{kind:'answer',description:pc.localDescription.toJSON(),clipboardVersion:1}});
     for(const sender of pc.getSenders()){if(sender.track?.kind==='video'){const params=sender.getParameters();if(params.encodings?.length){params.encodings[0].maxBitrate=6000000;await sender.setParameters(params).catch(()=>{});}}}return;
   }
-  if(p.kind==='answer'&&s.role==='viewer'){await s.pc.setRemoteDescription(p.description);s.remoteReady=true;for(const c of s.candidates)await s.pc.addIceCandidate(c);s.candidates=[];}
+  if(p.kind==='answer'&&s.role==='viewer'){await s.pc.setRemoteDescription(p.description);s.remoteReady=true;for(const c of s.candidates)await s.pc.addIceCandidate(c);s.candidates=[];s.peerClipboard=p.clipboardVersion===1;if(s.peerClipboard)bindClipboard(s,s.pc.createDataChannel('clipboard-v1',{ordered:true}));}
 }
 async function retryRelay(s){
   if(current!==s||s.retrying||s.role!=='viewer')return;s.retrying=true;
@@ -117,7 +151,7 @@ function updateStats(s){
   };refresh();statsTimer=setInterval(refresh,1500);
 }
 function closeLocal(){
-  const s=current;current=null;clearInterval(statsTimer);if(s){clearTimeout(s.timeout);clearTimeout(s.disconnectTimer);s.pc&&(s.pc.onconnectionstatechange=null);s.channel?.close();s.pc?.close();for(const track of s.stream?.getTracks()||[])track.stop();window.si.release(s.id).catch(()=>{});}
+  const s=current;current=null;clearInterval(statsTimer);if(s){clearTimeout(s.timeout);clearTimeout(s.disconnectTimer);s.pc&&(s.pc.onconnectionstatechange=null);s.channel?.close();s.clipboardChannel?.close();s.pc?.close();for(const track of s.stream?.getTracks()||[])track.stop();window.si.clipboardEnable({session:s.id,enabled:false}).catch(()=>{});window.si.release(s.id).catch(()=>{});}clipboardStatus();
   $('remote-video').srcObject=null;$('viewer').hidden=true;$('sharing-banner').hidden=true;$('route').textContent='Finding the best route';$('viewer-stats').textContent='';$('sharing-stats').textContent='';
 }
 $('disconnect').onclick=$('stop-sharing').onclick=attempt(async()=>{await window.si.end(current?.id);closeLocal();});
@@ -127,7 +161,9 @@ function point(e){const v=$('remote-video'),rect=v.getBoundingClientRect();if(!v
 let lastMove=0;const area=$('video-area');area.onpointermove=e=>{if(performance.now()-lastMove<16)return;lastMove=performance.now();const p=point(e);if(p)control({kind:'move',...p});};area.onpointerdown=e=>{const p=point(e);if(!p)return;e.preventDefault();area.focus();area.setPointerCapture(e.pointerId);control({kind:'move',...p});control({kind:'button',button:e.button,down:true});};area.onpointerup=e=>{e.preventDefault();control({kind:'button',button:e.button,down:false});};area.oncontextmenu=e=>e.preventDefault();area.addEventListener('wheel',e=>{e.preventDefault();control({kind:'scroll',dy:e.deltaY});},{passive:false});area.onkeydown=e=>{if(e.code==='Escape'&&document.fullscreenElement)return;e.preventDefault();control({kind:'key',code:e.code,down:true});};area.onkeyup=e=>{e.preventDefault();control({kind:'key',code:e.code,down:false});};area.onblur=()=>control({kind:'release'});window.addEventListener('blur',()=>control({kind:'release'}));
 let signalQueue=Promise.resolve();
 window.si.onEvent(b=>{
-  if(b.type==='state')render(b);
+  if(b.type==='clipboard-history')renderClipboard(b);
+  else if(b.type==='clipboard-local'){const s=current,c=s?.clipboardChannel;if(s&&s.id===b.session&&s.clipboardEnabled&&s.peerClipboardEnabled&&c?.readyState==='open'&&c.bufferedAmount<32768)c.send('T'+b.text);}
+  else if(b.type==='state')render(b);
   else if(b.type==='devices')renderDevices(b.devices);
   else if(b.type==='error'){toast(b.message);if(!current)$('viewer').hidden=true;}
   else if(b.type==='incoming'){pendingIncoming=b.session;$('incoming-name').textContent=b.viewerName+' is signed in to your SI account.';$('incoming-dialog').showModal();}
