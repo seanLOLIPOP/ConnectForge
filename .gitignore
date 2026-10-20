@@ -14,3 +14,6 @@ vendor/
 .tools/
 test/*.png*
 test/*.json*
+
+dist-admin/
+SI Remote Admin Data/

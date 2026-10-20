@@ -174,3 +174,5 @@ window.si.onEvent(b=>{
   else if(b.type==='stop-host'||b.type==='stop-viewer')closeLocal();
 });
 window.si.state().then(render).catch(e=>toast(e.message));
+
+$('updates').onclick=attempt(()=>window.si.updates());

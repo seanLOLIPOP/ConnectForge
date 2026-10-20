@@ -1,6 +1,6 @@
 {
   "name": "si-remote",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "Portable remote desktop for SI accounts",
   "author": "SI",
@@ -11,7 +11,9 @@
     "server": "node server/start.mjs",
     "build:win": "electron-builder --win portable zip --x64",
     "build:linux": "electron-builder --linux AppImage tar.gz --x64",
-    "build:mac": "node scripts/build-mac.mjs"
+    "build:mac": "node scripts/build-mac.mjs",
+    "build:admin": "node scripts/build-admin.mjs",
+    "sign:update": "node scripts/sign-update.mjs"
   },
   "dependencies": {
     "koffi": "3.3.3",
@@ -30,7 +32,9 @@
       "assets/server.json",
       "assets/server-ca.pem",
       "assets/icon.png",
-      "package.json"
+      "package.json",
+      "admin/**/*",
+      "assets/update-public.pem"
     ],
     "asarUnpack": [
       "node_modules/koffi/**",

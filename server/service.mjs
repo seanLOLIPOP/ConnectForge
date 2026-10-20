@@ -4,11 +4,12 @@ import {DatabaseSync} from 'node:sqlite';
 import {randomBytes,randomUUID,createHash,createHmac} from 'node:crypto';
 import {WebSocketServer,WebSocket} from 'ws';
 import {verifyLogin} from './identity.mjs';
+import {updateService} from './updates.mjs';
 const hash=v=>createHash('sha256').update(v).digest('hex');
 const fail=(message,status=400)=>{throw Object.assign(Error(message),{status});};
 const uid=v=>typeof v==='string'&&/^[a-f0-9-]{36}$/.test(v);
 const cleanUser=u=>({id:u.id,username:u.username});
-export function createService({identity,database=':memory:',tls,turnSecret='',turnHost='',turnPort=3478,cloudflareRelayHost='',clock=()=>Date.now()}){
+export function createService({identity,database=':memory:',tls,turnSecret='',turnHost='',turnPort=3478,cloudflareRelayHost='',updatePublicKey,updateAdminEmails=[],clock=()=>Date.now()}){
   const db=new DatabaseSync(database);db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;
     CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY,user_id TEXT NOT NULL,version TEXT NOT NULL,expires INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS devices(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,name TEXT NOT NULL,platform TEXT NOT NULL,identity_key TEXT NOT NULL,last_seen INTEGER NOT NULL,unattended INTEGER NOT NULL DEFAULT 0);
@@ -26,6 +27,7 @@ export function createService({identity,database=':memory:',tls,turnSecret='',tu
   }
   function ice(user){const iceServers=[];if(turnHost){iceServers.push({urls:cloudflareRelayHost?'stun:stun.cloudflare.com:3478':`stun:${turnHost}:${turnPort}`});if(turnSecret){const username=Math.floor(clock()/1000+3600)+':'+user;iceServers.push({urls:[`turn:${turnHost}:${turnPort}?transport=udp`,`turn:${turnHost}:${turnPort}?transport=tcp`],username,credential:createHmac('sha1',turnSecret).update(username).digest('base64')});}}return {iceServers,relayAvailable:!!(turnHost&&turnSecret),...(cloudflareRelayHost?{cloudflareRelayHost}:{})};}
   function send(ws,v){if(ws?.readyState===WebSocket.OPEN)ws.send(JSON.stringify(v));}
+  const updates=updateService({db,peers,send,audit,clock,publicKey:updatePublicKey,adminEmails:updateAdminEmails});
   function devices(user){return db.prepare('SELECT id,name,platform,last_seen,unattended FROM devices WHERE user_id=? ORDER BY name').all(user).map(d=>({...d,unattended:!!d.unattended,online:peers.has(d.id)}));}
   function broadcast(user){for(const p of peers.values())if(p.user===user)send(p.ws,{type:'devices',devices:devices(user)});}
   function endCall(id,reason='Session ended'){const c=calls.get(id);if(!c)return;for(const d of [c.host,c.viewer])send(peers.get(d)?.ws,{type:'ended',session:id,reason});calls.delete(id);audit(c.user,'session-ended',c.host);}
@@ -42,6 +44,7 @@ export function createService({identity,database=':memory:',tls,turnSecret='',tu
         db.prepare('INSERT INTO sessions VALUES(?,?,?,?)').run(hash(token),u.id,hash(u.salt+u.hash),expires);audit(u.id,'login');return reply({token,expires,user:cleanUser(u)});
       }
       const a=await account(req.headers.authorization?.replace(/^Bearer /,''));
+      if(await updates.route({p,req,a,read,reply}))return;
       if(p==='/api/me'&&req.method==='GET')return reply({user:cleanUser(a.u)});
       if(p==='/api/logout'&&req.method==='POST'){
         db.prepare('DELETE FROM sessions WHERE token=?').run(a.tokenHash);
@@ -53,7 +56,8 @@ export function createService({identity,database=':memory:',tls,turnSecret='',tu
         const old=db.prepare('SELECT * FROM devices WHERE id=?').get(b.id);
         if(old&&(old.user_id!==a.u.id||old.identity_key!==b.identityKey))fail('This device belongs to another registration',403);
         if(!old&&devices(a.u.id).length>=50)fail('Device limit reached');
-        db.prepare('INSERT INTO devices VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,platform=excluded.platform,last_seen=excluded.last_seen,unattended=excluded.unattended').run(b.id,a.u.id,b.name.trim(),b.platform,b.identityKey,clock(),b.unattended===true?1:0);
+        db.prepare('INSERT INTO devices(id,user_id,name,platform,identity_key,last_seen,unattended) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,platform=excluded.platform,last_seen=excluded.last_seen,unattended=excluded.unattended').run(b.id,a.u.id,b.name.trim(),b.platform,b.identityKey,clock(),b.unattended===true?1:0);
+        updates.register(b.id,b);
         audit(a.u.id,'device-registered',b.id);broadcast(a.u.id);return reply({ok:true});
       }
       const m=p.match(/^\/api\/devices\/([a-f0-9-]{36})$/);

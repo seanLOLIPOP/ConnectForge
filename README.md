@@ -1,8 +1,30 @@
 # ConnectForge (SI Remote) — portable preview
 
-Download the [v0.3.0 portable preview](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.3.0) for Windows, Linux, and Mac.
+Download the [v0.4.0 portable preview](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.0) for Windows, Linux, and Mac.
 
 Built October 20, 2026. A working remote desktop preview with SI account login, owned-device discovery, approval or explicitly enabled unattended access, screen streaming, native keyboard/mouse control, direct encrypted WebRTC connections, and an authenticated TURN relay on the 5080 server.
+
+## Online updates and the admin app
+
+Install **0.4.0 once manually** on each computer to enable online updates. Older versions cannot receive update offers. Portable client and admin downloads are separate.
+
+1. Open **SI Remote Admin** and sign in with the SI account authorized by the server administrator. Passwords are never stored by the admin app.
+2. Enter a published version (for example `0.4.1`) and click **Load signed release**. It loads `update-manifest.json` from this repository's GitHub release and verifies the pinned Ed25519 public key.
+3. Select registered computers and a newer compatible release, then click **Push to selected computers**. Offline devices receive the offer after reconnecting. Cancel offers from the admin table before the user approves restart.
+4. A client asks before downloading and again before restarting. **Later** keeps the app running; **This computer → Check update offers** reopens a postponed offer. Active remote sessions block installation.
+5. The new portable app is saved beside the previous app. Account settings and encrypted clipboard history remain in **SI Remote Data**. Once the new version has launched, opening the previous updater-capable app redirects to the verified newer app. Keep the downloaded artifact in place for this verification. The old app remains available with `--skip-update-redirect` for recovery. Version 0.3 and older shortcuts must be replaced manually.
+
+Windows updates use the portable EXE; Linux uses the x64 AppImage (FUSE and OS sandbox requirements still apply). macOS updates extract a versioned app beside the old app, verify its bundle signature, and retain macOS quarantine checks. **Online updating does not solve the existing Mac “damaged”/Gatekeeper issue.** Developer ID signing and Apple notarization are still needed for smooth public Mac distribution. If the new app is blocked, the previous app is retained. Reopen it and ask the administrator to resend the update.
+
+Update administration covers registered device names, owner IDs, OS/architecture, installed versions, online status and update progress. It does not grant cross-account remote desktop or clipboard access. An offline computer's last status can be stale. Installed is recorded when the new app signs in and registers, so users who did not remember sign-in must sign in again first. Version 0.4.0 is the bootstrap release; push offers become useful when a newer signed release is published.
+
+### Publishing an update
+
+Build all client platforms, collect their artifacts in `dist/`, and run `node scripts/sign-update.mjs` with `SI_UPDATE_SIGNING_KEY` pointing to the release signing private key **outside this project**. Upload `update-manifest.json` with the artifacts to the matching GitHub release tag. The private key is never uploaded, bundled, or stored on the 5080 service. Back it up securely; losing it requires a manual trust-key migration. The public key is pinned in `assets/update-public.pem` on clients and server. Importing a different payload for an existing release version is rejected. Signed manifests cover platform, architecture, filename, version, byte size, and SHA-256; clients reject downgrades and altered artifacts.
+
+Server configuration uses `updateAdminEmails` as a list of trusted SI account emails, checked against the fresh SI identity record on every admin request. Default is no update administrators. Existing session/password-change revocation applies to the admin API too. Admin and update actions are audited in the service database. The source includes 21 automated account, clipboard, update security, migration and restart-consent tests.
+
+Build the portable admin app with `node scripts/build-admin.mjs` on each native platform. macOS builds must run on macOS. Admin app updates are manual in this release.
 
 ## GPU acceleration
 
@@ -10,13 +32,13 @@ v0.3.0 prefers H.264 to use the operating system’s hardware encoder and decode
 
 ## Run
 
-**Windows:** run `SI-Remote-0.3.0-Windows-Portable.exe`. No installer. Alternatively extract the Windows ZIP and run `SI Remote.exe` from that folder.
+**Windows:** run `SI-Remote-0.4.0-Windows-Portable.exe`. No installer. Alternatively extract the Windows ZIP and run `SI Remote.exe` from that folder.
 
-Windows and macOS builds are not code-signed. These are private preview downloads, not signed public-store releases.
+Windows builds are unsigned; macOS bundles are ad-hoc signed without Developer ID signing or notarization. These are private preview downloads, not signed public-store releases.
 
 **Linux x64:** make the AppImage executable and run it, or extract the tar.gz and run `si-remote`. The tar.gz avoids the AppImage FUSE dependency. X11 is supported for remote control; Wayland remote input is not implemented in this preview. The desktop must include libX11 and libXtst. Electron also needs its usual GTK/NSS/desktop runtime libraries. Ubuntu's AppArmor/user-namespace sandbox restrictions can require a system-approved Electron sandbox configuration. Do not disable the Chromium sandbox to work around those restrictions.
 
-**macOS:** extract the matching Apple Silicon (arm64) or Intel (x64) ZIP and open SI Remote.app. v0.2.2 is built on macOS and ad-hoc signed with strict bundle/native-module/helper signature verification. Apple Silicon app launch and native input initialization passed on macOS 26.6; Intel runtime is untested. These builds are not Developer ID signed or notarized. macOS may block them until explicitly approved in Privacy & Security. Grant Screen Recording and Accessibility, then restart the app if macOS requests it. Apple signing/notarization is needed for normal public distribution.
+**macOS:** extract the matching Apple Silicon (arm64) or Intel (x64) ZIP and open SI Remote.app. v0.4.0 is built on macOS and ad-hoc signed with strict bundle/native-module/helper signature verification. Apple Silicon app launch and native input initialization passed on macOS 26.6; Intel runtime is untested. These builds are not Developer ID signed or notarized. macOS may block them until explicitly approved in Privacy & Security. Grant Screen Recording and Accessibility, then restart the app if macOS requests it. Apple signing/notarization is needed for normal public distribution.
 
 1. Sign in with your existing SI email and password. No new account is created.
 2. On the computer to control, open **This computer** and explicitly enable **Unattended access**, then save. Otherwise someone must accept each incoming request.

@@ -1,9 +1,10 @@
 'use strict';
-const {app,BrowserWindow,ipcMain,desktopCapturer,screen,session,safeStorage,Tray,Menu,nativeImage,systemPreferences,clipboard}=require('electron');
+const {app,BrowserWindow,ipcMain,desktopCapturer,screen,session,safeStorage,Tray,Menu,nativeImage,systemPreferences,clipboard,dialog}=require('electron');
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),https=require('node:https'),crypto=require('node:crypto');
 const WebSocket=require('ws');const {createInput}=require('./input.cjs');
 const {createCloudflare}=require('./cloudflare.cjs');
 const {createClipboardHistory}=require('./clipboard.cjs');
+const {createUpdater}=require('./updater.cjs');
 const assets=path.join(__dirname,'..','assets'),defaults=JSON.parse(fs.readFileSync(path.join(assets,'server.json'),'utf8'));
 const portableRoot=process.env.SI_REMOTE_PROFILE||process.env.PORTABLE_EXECUTABLE_DIR||(process.env.APPIMAGE?path.dirname(process.env.APPIMAGE):app.isPackaged?(process.platform==='darwin'?path.resolve(process.execPath,'../../../..'):path.dirname(process.execPath)):path.join(__dirname,'..'));
 let portable=true,dataDir=path.join(portableRoot,'SI Remote Data');
@@ -20,16 +21,17 @@ const caFile=path.join(assets,'server-ca.pem'),ca=fs.existsSync(caFile)?fs.readF
 let win,tray,socket,token=null,user=null,devices=[],iceServers=[],relayAvailable=false,input,hostSession=null,viewerSession=null,pendingHost=null,selectedSource=null,heartbeat,reconnectTimer,quitting=false;
 const cloudflare=createCloudflare({packaged:app.isPackaged,resourcesPath:process.resourcesPath});let serviceURL=config.server,iceReady=Promise.resolve();
 const clipboardHistory=createClipboardHistory({clipboard,storage:{available:secureStorage,encrypt:text=>safeStorage.encryptString(text),decrypt:data=>safeStorage.decryptString(data)},directory:dataDir,onLocal:b=>emit('clipboard-local',b),onChange:b=>emit('clipboard-history',b)});
+const updater=createUpdater({app,dialog,window:()=>win,request,publicKey:fs.readFileSync(path.join(assets,'update-public.pem')),root:portableRoot,dataDir,busy:()=>!!(hostSession||viewerSession||pendingHost),identity:()=>({'X-SI-Device':config.deviceId,'X-SI-Device-Key':config.identityKey})});
 async function apiTransport(){if(config.server===defaults.url&&defaults.tunnelHostname){const port=await cloudflare.bridge(defaults.tunnelHostname);serviceURL='https://127.0.0.1:'+port;}return serviceURL;}
 async function prepareIce(b){const host=b.cloudflareRelayHost||((config.server===defaults.url)?defaults.relayTunnelHostname:null);let servers=b.iceServers||[];if(host){const port=await cloudflare.bridge(host);servers=servers.map(server=>{const urls=Array.isArray(server.urls)?server.urls:[server.urls];return urls.some(url=>url.startsWith('turn:'))?{...server,urls:[`turn:127.0.0.1:${port}?transport=tcp`]}:server;});}iceServers=servers;relayAvailable=b.relayAvailable===true;return servers;}
 function emit(type,data){if(win&&!win.isDestroyed())win.webContents.send('si:event',{type,...data});}
 function secureStorage(){return safeStorage.isEncryptionAvailable()&&!(process.platform==='linux'&&safeStorage.getSelectedStorageBackend()==='basic_text');}
 function tlsOptions(){return {ca:ca?[...require('node:tls').rootCertificates,ca]:undefined,minVersion:'TLSv1.2'};}
-async function request(endpoint,method='GET',body){
+async function request(endpoint,method='GET',body,extraHeaders={}){
   const backend=await apiTransport();
   return new Promise((resolve,reject)=>{
     const url=new URL(endpoint,backend);const payload=body===undefined?null:JSON.stringify(body);
-    const req=https.request(url,{...tlsOptions(),method,headers:{...(token?{Authorization:'Bearer '+token}:{}),...(payload?{'Content-Type':'application/json','Content-Length':Buffer.byteLength(payload)}:{})}},res=>{
+    const req=https.request(url,{...tlsOptions(),method,headers:{...extraHeaders,...(token?{Authorization:'Bearer '+token}:{}),...(payload?{'Content-Type':'application/json','Content-Length':Buffer.byteLength(payload)}:{})}},res=>{
       let text='';res.on('data',c=>{text+=c;if(text.length>1024*1024)req.destroy(Error('Server response too large'));});res.on('end',()=>{try{const b=JSON.parse(text);if(res.statusCode>=400)reject(Error(b.error||'Request failed'));else resolve(b);}catch{reject(Error('Invalid server response'));}});
     });req.setTimeout(10000,()=>req.destroy(Error('The SI server did not respond')));req.on('error',reject);if(payload)req.write(payload);req.end();
   });
@@ -42,8 +44,9 @@ function updateTray(){
   tray.setContextMenu(Menu.buildFromTemplate([{label:hostSession?'Desktop sharing active — open controls':'Open SI Remote',click:()=>{win.show();win.focus();}},{label:config.unattended?'Disable unattended access':'Unattended access is off',enabled:config.unattended,click:async()=>{config.unattended=false;save();endAll();await register().catch(()=>{});emit('state',state());}},{label:'Disconnect all sessions',click:endAll},{type:'separator'},{label:'Quit SI Remote',click:()=>{quitting=true;app.quit();}}]));
 }
 function state(){return {user,deviceId:config.deviceId,name:config.name,unattended:config.unattended,devices,connected:socket?.readyState===WebSocket.OPEN,server:config.server,portable,dataDir,rememberAvailable:secureStorage(),platform:process.platform,relayAvailable,input:input?.status()||{available:false,error:'Starting'},permissions:process.platform==='darwin'?{screen:systemPreferences.getMediaAccessStatus('screen'),accessibility:systemPreferences.isTrustedAccessibilityClient(false)}:{screen:'unknown',accessibility:true}};}
-async function register(){if(!token)return;await request('/api/devices','POST',{id:config.deviceId,identityKey:config.identityKey,name:config.name,platform:process.platform,unattended:config.unattended});}
+async function register(){if(!token)return;await request('/api/devices','POST',{id:config.deviceId,identityKey:config.identityKey,name:config.name,platform:process.platform,arch:process.arch,appVersion:app.getVersion(),unattended:config.unattended});}
 async function acceptHost(id){
+  if(updater.isInstalling())throw Error('The app is restarting for an update');
   await iceReady;
   if(!id||pendingHost!==id)throw Error('This connection request is no longer valid');
   if(hostSession||viewerSession)throw Error('Finish the current session first');
@@ -58,11 +61,13 @@ function connectSocket(){
   socket.on('open',()=>send({type:'auth',token,device:config.deviceId,identityKey:config.identityKey}));
   socket.on('message',async raw=>{try{const b=JSON.parse(raw);if(b.type==='ready'){iceReady=prepareIce(b);await iceReady;heartbeat=setInterval(()=>{try{send({type:'heartbeat'});}catch{}},20000);emit('state',state());}
     else if(b.type==='devices'){devices=b.devices;emit('devices',{devices});}
+    else if(b.type==='update-available'){updater.check().catch(()=>{});}
     else if(b.type==='incoming'){
+      if(updater.isInstalling()){send({type:'end',session:b.session});return;}
       pendingHost=b.session;
       if(config.unattended)acceptHost(b.session).catch(e=>{emit('error',{message:e.message});try{send({type:'end',session:b.session});}catch{}});
       else{win.show();emit('incoming',b);}
-    }else if(b.type==='connecting'){viewerSession=b.session;emit('connecting',b);}
+    }else if(b.type==='connecting'){if(updater.isInstalling()){send({type:'end',session:b.session});return;}viewerSession=b.session;emit('connecting',b);}
     else if(b.type==='ended'){clipboardHistory.setSession(null);if(pendingHost===b.session)pendingHost=null;if(hostSession===b.session)stopHost();if(viewerSession===b.session)viewerSession=null;emit('ended',b);}
     else if(b.type==='signal'){if(b.session===hostSession||b.session===viewerSession)emit('signal',b);}
     else if(b.type==='accepted'){if(b.session===viewerSession){await prepareIce(b);emit('accepted',{...b,iceServers});}}
@@ -73,6 +78,7 @@ function connectSocket(){
 const trusted=event=>win&&!win.isDestroyed()&&event.sender===win.webContents&&event.senderFrame===win.webContents.mainFrame;
 function handle(name,fn){ipcMain.handle('si:'+name,async(event,...args)=>{if(!trusted(event))throw Error('Untrusted window');try{return {ok:true,value:await fn(...args)};}catch(e){return {ok:false,error:e.message};}});}
 handle('state',()=>state());
+handle('updates',async()=>{if(!user)throw Error('Sign in to check update offers');await updater.check(true);});
 handle('login',async({email,password,remember})=>{
   if(user)throw Error('Sign out before switching accounts');const result=await request('/api/login','POST',{email,password});token=result.token;user=result.user;
   try{if(config.ownerId&&config.ownerId!==user.id){config.deviceId=crypto.randomUUID();config.identityKey=crypto.randomBytes(32).toString('hex');config.unattended=false;}await register();config.ownerId=user.id;save();clipboardHistory.setOwner(user.id);if(remember&&secureStorage())fs.writeFileSync(tokenFile,safeStorage.encryptString(token),{mode:0o600});else fs.rmSync(tokenFile,{force:true});connectSocket();return state();}catch(e){token=null;user=null;throw e;}
@@ -83,7 +89,7 @@ handle('settings',async b=>{
   if(b.unattended===true&&(!user||!input.status().available))throw Error(input.status().error||'Sign in before enabling unattended access');
   config.name=b.name.trim();config.unattended=b.unattended===true;save();if(!config.unattended&&hostSession)endAll();await register();updateTray();return state();
 });
-handle('connect',id=>{if(typeof id!=='string'||!devices.some(d=>d.id===id&&d.id!==config.deviceId&&d.online))throw Error('Choose an online computer');send({type:'connect',device:id});});
+handle('connect',id=>{if(updater.isInstalling())throw Error('The app is restarting for an update');if(typeof id!=='string'||!devices.some(d=>d.id===id&&d.id!==config.deviceId&&d.online))throw Error('Choose an online computer');send({type:'connect',device:id});});
 handle('approve',id=>acceptHost(id));
 handle('signal',b=>{if(!b||![hostSession,viewerSession].filter(Boolean).includes(b.session))throw Error('Session is not active');send({type:'signal',session:b.session,payload:b.payload});});
 handle('end',id=>{if(id&&pendingHost===id){send({type:'end',session:id});pendingHost=null;}else if(!id||[hostSession,viewerSession].includes(id)){endAll();}});
@@ -106,6 +112,7 @@ if(!app.requestSingleInstanceLock())app.quit();else{
   app.on('second-instance',()=>{win?.show();win?.focus();});
   app.whenReady().then(async()=>{
     input=createInput();setInterval(()=>clipboardHistory.tick(),500).unref();
+    setInterval(()=>{if(user)updater.check().catch(()=>{});},60000).unref();
     session.defaultSession.setPermissionRequestHandler((webContents,permission,callback)=>callback(webContents===win?.webContents&&['media','display-capture'].includes(permission)));
     session.defaultSession.setDisplayMediaRequestHandler(async(req,callback)=>{if(!hostSession||!selectedSource||req.frame!==win.webContents.mainFrame)return callback({});callback({video:selectedSource});},{useSystemPicker:false});
     win=new BrowserWindow({width:1220,height:810,minWidth:920,minHeight:650,backgroundColor:'#0b101b',title:'SI Remote',icon:path.join(assets,'icon.png'),autoHideMenuBar:true,webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,webSecurity:true}});
@@ -114,6 +121,7 @@ if(!app.requestSingleInstanceLock())app.quit();else{
     const icon=nativeImage.createFromPath(path.join(assets,'icon.png')).resize({width:24,height:24});
     tray=new Tray(icon);updateTray();tray.on('double-click',()=>{win.show();win.focus();});
     await win.loadFile(path.join(__dirname,'index.html'));
+    if(await updater.startup())return;
     if(!app.isPackaged&&process.env.SI_REMOTE_E2E)require('../test/electron-harness.cjs')({win,app,fs,screen});
     if(secureStorage()&&fs.existsSync(tokenFile))try{token=safeStorage.decryptString(fs.readFileSync(tokenFile));user=(await request('/api/me')).user;clipboardHistory.setOwner(user.id);await register();connectSocket();emit('state',state());}catch(e){token=null;user=null;fs.rmSync(tokenFile,{force:true});emit('error',{message:'Sign in again: '+e.message});}
     if(process.env.SI_REMOTE_SMOKE){setTimeout(async()=>{try{await win.capturePage().then(img=>fs.writeFileSync(process.env.SI_REMOTE_SMOKE,img.toPNG()));fs.writeFileSync(process.env.SI_REMOTE_SMOKE+'.json',JSON.stringify(state(),null,2));quitting=true;app.quit();}catch(e){console.error(e);app.exit(1);}},2500);}
