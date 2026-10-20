@@ -1,12 +1,16 @@
 # ConnectForge (SI Remote) — portable preview
 
-Download the Windows, Linux, and macOS packages from the [v0.2.0 preview release](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.2.0).
+Download the Windows, Linux, and macOS packages from the [v0.2.1 preview release](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.2.1).
 
 Built October 20, 2026. A working remote desktop preview with SI account login, owned-device discovery, approval or explicitly enabled unattended access, screen streaming, native keyboard/mouse control, direct encrypted WebRTC connections, and an authenticated TURN relay on the 5080 server.
 
+## GPU acceleration
+
+v0.2.1 prefers H.264 to use the operating system’s hardware encoder and decoder when available, keeping other codecs for compatibility. The host sharing banner shows GPU/CPU encoding; the viewer toolbar shows GPU/CPU decoding, codec, frame rate, and network round-trip time. An unknown status means WebRTC did not report acceleration. GPU availability depends on the OS, driver, and hardware; H.264 can also run in software. This change does not require a GPU on the relay server or guarantee lower latency. Capture remains at 24 FPS ideal, 30 FPS maximum. Windows NVIDIA H.264 encoding and D3D11 decoding were verified; Linux/macOS hardware acceleration has not been verified.
+
 ## Run
 
-**Windows:** run `SI-Remote-0.2.0-Windows-Portable.exe`. No installer. Alternatively extract the Windows ZIP and run `SI Remote.exe` from that folder.
+**Windows:** run `SI-Remote-0.2.1-Windows-Portable.exe`. No installer. Alternatively extract the Windows ZIP and run `SI Remote.exe` from that folder.
 
 Windows and macOS builds are not code-signed. These are private preview downloads, not signed public-store releases.
 
