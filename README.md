@@ -1,6 +1,6 @@
 # ConnectForge (SI Remote) — portable preview
 
-Download the Windows, Linux, and macOS packages from the [v0.2.1 preview release](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.2.1).
+Download Windows/Linux packages from the [v0.2.1 preview release](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.2.1). Mac packaging repairs are in v0.2.2.
 
 Built October 20, 2026. A working remote desktop preview with SI account login, owned-device discovery, approval or explicitly enabled unattended access, screen streaming, native keyboard/mouse control, direct encrypted WebRTC connections, and an authenticated TURN relay on the 5080 server.
 
@@ -16,7 +16,7 @@ Windows and macOS builds are not code-signed. These are private preview download
 
 **Linux x64:** make the AppImage executable and run it, or extract the tar.gz and run `si-remote`. The tar.gz avoids the AppImage FUSE dependency. X11 is supported for remote control; Wayland remote input is not implemented in this preview. The desktop must include libX11 and libXtst. Electron also needs its usual GTK/NSS/desktop runtime libraries. Ubuntu's AppArmor/user-namespace sandbox restrictions can require a system-approved Electron sandbox configuration. Do not disable the Chromium sandbox to work around those restrictions.
 
-**macOS:** extract the matching Apple Silicon (arm64) or Intel (x64) ZIP and open SI Remote.app. These builds are unsigned and unnotarized and have not been runtime-tested on a Mac. macOS may block them until explicitly approved in Privacy & Security. Grant Screen Recording and Accessibility, then restart the app if macOS requests it. Apple signing/notarization is needed for normal public distribution.
+**macOS:** extract the matching Apple Silicon (arm64) or Intel (x64) ZIP and open SI Remote.app. v0.2.2 is built on macOS and ad-hoc signed with strict bundle/native-module/helper signature verification. Apple Silicon app launch and native input initialization passed on macOS 26.6; Intel runtime is untested. These builds are not Developer ID signed or notarized. macOS may block them until explicitly approved in Privacy & Security. Grant Screen Recording and Accessibility, then restart the app if macOS requests it. Apple signing/notarization is needed for normal public distribution.
 
 1. Sign in with your existing SI email and password. No new account is created.
 2. On the computer to control, open **This computer** and explicitly enable **Unattended access**, then save. Otherwise someone must accept each incoming request.
@@ -80,7 +80,7 @@ pnpm test
 pnpm start
 pnpm build:win
 pnpm build:linux
-pnpm build:mac
+pnpm build:mac # run on a Mac
 ```
 
 Prefer native OS builds for releases. Cross-packaged macOS builds must include the correct `@koromix/koffi-darwin-*` native dependency, then be tested, signed, and notarized on macOS. Tests include isolated account/ownership/approval/revocation cases and an opt-in two-process Electron test (`test/electron-harness.cjs`) using an ephemeral identity server separate from production accounts. The test harness is never packaged.
@@ -91,4 +91,8 @@ Verified on Windows: app launch, portable executable/ZIP packaging, native input
 
 Linux X11 app launch passed on Ubuntu 24.04 after the one-time administrator preparation of Chromium's sandbox helper. A Windows viewer controlling the Linux 5080 passed 1920×1080 screen streaming, direct and TURN relay paths, and native keyboard event delivery. The sandbox stayed enabled. On other Ubuntu hosts, run `bash scripts/prepare-linux-sandbox.sh /absolute/path/to/extracted-app` and enter the sudo password locally if required. Other Linux systems may support Chromium's user-namespace sandbox without this setup.
 
-macOS binaries are cross-packaged and untested on actual Macs. Full cross-platform sessions need device testing. This preview has no file transfer, clipboard sync, audio, monitor picker, secure-desktop support, auto-start service, or automatic updates. It shares the first available display. It is a usable preview, not a fully validated RustDesk replacement.
+v0.2.2 Mac packages are built and signed on macOS; Apple Silicon launch and native input initialization passed, while full Mac remote-control sessions and Intel runtime remain unverified. Full cross-platform sessions need device testing. This preview has no file transfer, clipboard sync, audio, monitor picker, secure-desktop support, auto-start service, or automatic updates. It shares the first available display. It is a usable preview, not a fully validated RustDesk replacement.
+
+## Mac release integrity
+
+Build Mac releases on macOS with `pnpm build:mac`; cross-platform Mac packaging is rejected because it cannot correctly sign the final bundle. Both Darwin native input packages are explicit optional dependencies and installed for both architectures. The build checks their presence and validates bundle, native module, and Cloudflare signatures. Default signing is ad-hoc for local testing. Public distribution still requires a Developer ID Application certificate and notarization: set `SI_REMOTE_MAC_IDENTITY` to that identity and configure electron-builder’s Apple notarization credentials locally. Do not commit credentials. The portable app is a ZIP containing SI Remote.app, with no installer. macOS 13+ is required; allow Screen Recording, Accessibility, and Local Network as needed for hosting and direct connections.

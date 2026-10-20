@@ -4,3 +4,11 @@ allowBuilds:
   koffi: true
 minimumReleaseAgeExclude:
   - electron@44.9.1
+
+supportedArchitectures:
+  os:
+    - current
+    - darwin
+  cpu:
+    - x64
+    - arm64

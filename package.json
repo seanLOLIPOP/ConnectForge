@@ -1,6 +1,6 @@
 {
   "name": "si-remote",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "description": "Portable remote desktop for SI accounts",
   "author": "SI",
@@ -11,7 +11,7 @@
     "server": "node server/start.mjs",
     "build:win": "electron-builder --win portable zip --x64",
     "build:linux": "electron-builder --linux AppImage tar.gz --x64",
-    "build:mac": "electron-builder --mac zip --x64 --arm64"
+    "build:mac": "node scripts/build-mac.mjs"
   },
   "dependencies": {
     "koffi": "3.3.3",
@@ -33,7 +33,8 @@
       "package.json"
     ],
     "asarUnpack": [
-      "node_modules/koffi/**"
+      "node_modules/koffi/**",
+      "node_modules/@koromix/koffi-*/**"
     ],
     "directories": {
       "output": "dist"
@@ -81,7 +82,8 @@
       "entitlementsInherit": "assets/entitlements.mac.plist",
       "extendInfo": {
         "NSMicrophoneUsageDescription": "Optional remote desktop audio.",
-        "NSScreenCaptureUsageDescription": "Share your desktop with another device signed in to your SI account."
+        "NSScreenCaptureUsageDescription": "Share your desktop with another device signed in to your SI account.",
+        "NSLocalNetworkUsageDescription": "Connect directly to your computers on the local network for remote desktop sessions."
       },
       "artifactName": "SI-Remote-${version}-macOS-${arch}.${ext}",
       "extraResources": [
@@ -89,7 +91,12 @@
           "from": "vendor/cloudflared/darwin-${arch}",
           "to": "cloudflared"
         }
-      ]
+      ],
+      "minimumSystemVersion": "13.0"
     }
+  },
+  "optionalDependencies": {
+    "@koromix/koffi-darwin-arm64": "3.3.3",
+    "@koromix/koffi-darwin-x64": "3.3.3"
   }
 }

@@ -21,6 +21,13 @@ importers:
       electron-builder:
         specifier: 26.15.3
         version: 26.15.3(electron-builder-squirrel-windows@26.15.3)(supports-color@7.2.0)
+    optionalDependencies:
+      '@koromix/koffi-darwin-arm64':
+        specifier: 3.3.3
+        version: 3.3.3
+      '@koromix/koffi-darwin-x64':
+        specifier: 3.3.3
+        version: 3.3.3
 
 packages:
 
