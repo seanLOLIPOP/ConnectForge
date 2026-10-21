@@ -6,6 +6,7 @@ const {createCloudflare}=require('./cloudflare.cjs');
 const {createClipboardHistory}=require('./clipboard.cjs');
 const {createUpdater}=require('./updater.cjs');
 const {createPointerReceiver}=require('./latency.js');
+const {createFileAccess}=require('./files.cjs');
 const assets=path.join(__dirname,'..','assets'),defaults=JSON.parse(fs.readFileSync(path.join(assets,'server.json'),'utf8'));
 const launchPath=name=>{const value=process.argv.find(a=>a.startsWith('--'+name+'='))?.slice(name.length+3);return value&&path.isAbsolute(value)?value:undefined;};
 const portableRoot=launchPath('si-remote-profile')||process.env.SI_REMOTE_PROFILE||process.env.PORTABLE_EXECUTABLE_DIR||(process.env.APPIMAGE?path.dirname(process.env.APPIMAGE):app.isPackaged?(process.platform==='darwin'?path.resolve(process.execPath,'../../../..'):path.dirname(process.execPath)):path.join(__dirname,'..'));
@@ -23,6 +24,7 @@ const save=()=>{fs.writeFileSync(configFile,JSON.stringify(config,null,2),{mode:
 const caFile=path.join(assets,'server-ca.pem'),ca=fs.existsSync(caFile)?fs.readFileSync(caFile):undefined;
 let win,tray,socket,token=null,user=null,devices=[],iceServers=[],relayAvailable=false,input,hostSession=null,viewerSession=null,pendingHost=null,selectedSource=null,heartbeat,reconnectTimer,quitting=false;
 let pointerInput,inputBounds=null;
+const fileAccess=createFileAccess({active:id=>!!user&&!!id&&[hostSession,viewerSession].includes(id)});
 const cloudflare=createCloudflare({packaged:app.isPackaged,resourcesPath:process.resourcesPath});let serviceURL=config.server,iceReady=Promise.resolve();
 const clipboardHistory=createClipboardHistory({clipboard,storage:{available:secureStorage,encrypt:text=>safeStorage.encryptString(text),decrypt:data=>safeStorage.decryptString(data)},directory:dataDir,onLocal:b=>emit('clipboard-local',b),onChange:b=>emit('clipboard-history',b)});
 const updater=createUpdater({app,dialog,window:()=>win,request,publicKey:fs.readFileSync(path.join(assets,'update-public.pem')),root:portableRoot,dataDir,onProgress:p=>{emit('update-progress',p);if(win&&!win.isDestroyed())win.setProgressBar(p.stage==='idle'?-1:p.stage==='verifying'?1:p.received/p.total);},busy:()=>!!(hostSession||viewerSession||pendingHost),identity:()=>({'X-SI-Device':config.deviceId,'X-SI-Device-Key':config.identityKey})});
@@ -41,8 +43,8 @@ async function request(endpoint,method='GET',body,extraHeaders={}){
   });
 }
 function send(b){if(socket?.readyState!==WebSocket.OPEN)throw Error('Connection service is offline');socket.send(JSON.stringify(b));}
-function stopHost(){clipboardHistory.setSession(null);input?.release();pointerInput?.reset();inputBounds=null;hostSession=null;selectedSource=null;emit('stop-host',{});updateTray();}
-function endAll(){if(hostSession)try{send({type:'end',session:hostSession});}catch{}if(viewerSession)try{send({type:'end',session:viewerSession});}catch{}stopHost();viewerSession=null;emit('stop-viewer',{});}
+function stopHost(){fileAccess.end(hostSession).catch(()=>{});clipboardHistory.setSession(null);input?.release();pointerInput?.reset();inputBounds=null;hostSession=null;selectedSource=null;emit('stop-host',{});updateTray();}
+function endAll(){fileAccess.end(viewerSession).catch(()=>{});if(hostSession)try{send({type:'end',session:hostSession});}catch{}if(viewerSession)try{send({type:'end',session:viewerSession});}catch{}stopHost();viewerSession=null;emit('stop-viewer',{});}
 function updateTray(){
   if(!tray)return;tray.setToolTip(hostSession?'SI Remote · Desktop is being controlled':'SI Remote · '+(user?'Signed in':'Signed out'));
   tray.setContextMenu(Menu.buildFromTemplate([{label:hostSession?'Desktop sharing active — open controls':'Open SI Remote',click:()=>{win.show();win.focus();}},{label:config.unattended?'Disable unattended access':'Unattended access is off',enabled:config.unattended,click:async()=>{config.unattended=false;save();endAll();await register().catch(()=>{});emit('state',state());}},{label:'Disconnect all sessions',click:endAll},{type:'separator'},{label:'Quit SI Remote',click:()=>{quitting=true;app.quit();}}]));
@@ -72,7 +74,7 @@ function connectSocket(){
       if(config.unattended)acceptHost(b.session).catch(e=>{emit('error',{message:e.message});try{send({type:'end',session:b.session});}catch{}});
       else{win.show();emit('incoming',b);}
     }else if(b.type==='connecting'){if(updater.isInstalling()){send({type:'end',session:b.session});return;}viewerSession=b.session;emit('connecting',b);}
-    else if(b.type==='ended'){clipboardHistory.setSession(null);if(pendingHost===b.session)pendingHost=null;if(hostSession===b.session)stopHost();if(viewerSession===b.session)viewerSession=null;emit('ended',b);}
+    else if(b.type==='ended'){fileAccess.end(b.session).catch(()=>{});clipboardHistory.setSession(null);if(pendingHost===b.session)pendingHost=null;if(hostSession===b.session)stopHost();if(viewerSession===b.session)viewerSession=null;emit('ended',b);}
     else if(b.type==='signal'){if(b.session===hostSession||b.session===viewerSession)emit('signal',b);}
     else if(b.type==='accepted'){if(b.session===viewerSession){await prepareIce(b);emit('accepted',{...b,iceServers});}}
     else if(b.type==='error')emit('error',{message:b.message});
@@ -82,6 +84,8 @@ function connectSocket(){
 const trusted=event=>win&&!win.isDestroyed()&&event.sender===win.webContents&&event.senderFrame===win.webContents.mainFrame;
 function handle(name,fn){ipcMain.handle('si:'+name,async(event,...args)=>{if(!trusted(event))throw Error('Untrusted window');try{return {ok:true,value:await fn(...args)};}catch(e){return {ok:false,error:e.message};}});}
 handle('fullscreen',enabled=>{if(typeof enabled!=='boolean')throw Error('Invalid fullscreen state');win.setFullScreen(enabled);return enabled;});
+handle('files',b=>fileAccess.call(b?.session,b?.request));
+handle('files-end',id=>fileAccess.end(id));
 handle('state',()=>state());
 handle('updates',async()=>{if(!user)throw Error('Sign in to check update offers');await updater.check(true);});
 handle('login',async({email,password,remember})=>{

@@ -1,0 +1,30 @@
+'use strict';
+window.SIFileUI={create({api,session,toast}){
+ const $=id=>document.getElementById(id),panes={local:{},remote:{}};let task=null,generation=0;
+ const size=n=>n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':n<1073741824?(n/1048576).toFixed(1)+' MB':(n/1073741824).toFixed(2)+' GB';
+ function endpoint(side){const s=session();if(!s?.filesRPC||s.fileChannel?.readyState!=='open')throw Error('Update both apps and wait for the file channel');return side==='local'?{call:(op,args)=>api.files({session:s.id,request:{op,args}})}:s.filesRPC;}
+ function available(){const s=session(),ready=s?.filesRPC&&s.fileChannel?.readyState==='open';for(const id of ['files-viewer','files-host'])$(id).disabled=!ready;return ready;}
+ function controls(){const busy=!!task;for(const side of ['local','remote']){$(side+'-send').disabled=busy||!panes[side].selected||!panes[side==='local'?'remote':'local'].listing?.id;for(const action of ['up','refresh','locations'])$(side+'-'+action).disabled=busy;} $('files-cancel').disabled=!busy;}
+ async function browse(side,id,roots=false){const version=generation,p=panes[side];p.selected=null;p.listing=null;controls();$(side+'-entries').replaceChildren();$(side+'-path').textContent='Loading…';try{const listing=await endpoint(side).call(roots?'roots':'list',{id});if(version!==generation)return;p.listing=listing;$(side+'-path').textContent=listing.path;$(side+'-entries').replaceChildren();
+   for(const entry of listing.entries){const row=document.createElement('button');row.type='button';row.className='file-row';row.disabled=!entry.id;const name=document.createElement('span'),detail=document.createElement('span');name.textContent=(entry.kind==='directory'?'▣ ':entry.kind==='file'?'▤ ':'↗ ')+entry.name;detail.textContent=entry.kind==='file'?size(entry.size):entry.kind;row.append(name,detail);row.onclick=()=>{if(task)return;for(const b of $(side+'-entries').children)b.classList.remove('selected');row.classList.add('selected');p.selected=entry;controls();};row.ondblclick=()=>{if(!task&&entry.kind==='directory')browse(side,entry.id);};$(side+'-entries').append(row);}
+   if(!listing.entries.length)$(side+'-entries').textContent='This folder is empty.';if(listing.truncated)toast('Showing the first 5,000 entries. Open a subfolder to narrow the list.');
+  }catch(e){if(version===generation){$(side+'-path').textContent=e.message;toast(e.message);}}finally{if(version===generation)controls();}
+ }
+ async function transfer(side){if(task)return;const other=side==='local'?'remote':'local',entry=panes[side].selected,destination=panes[other].listing?.id;if(!entry||!destination)return;const version=generation,t=task={cancelled:false},source=endpoint(side),target=endpoint(other),pending=new Set();let plan,receiver,done=0,acknowledged=0,failure=null;const started=Date.now();
+  $('files-progress').value=0;$('files-status').textContent='Preparing '+entry.name+'…';controls();
+  function progress(){if(task!==t)return;$('files-progress').value=plan.bytes?acknowledged/plan.bytes*100:0;$('files-status').textContent=(side==='local'?'Sending ':'Receiving ')+entry.name+' · '+size(acknowledged)+' / '+size(plan.bytes)+' · '+size(acknowledged/Math.max(1,(Date.now()-started)/1000))+'/s';}
+  try{plan=await source.call('plan',{id:entry.id});if(t.cancelled)throw Error('Transfer cancelled');receiver=await target.call('begin',{destination,manifest:{name:plan.name,kind:plan.kind,files:plan.files.map(f=>({path:f.path,size:f.size})),directories:plan.directories}});
+   for(let index=0;index<plan.files.length;index++){const file=plan.files[index];for(let offset=0;offset<file.size;){if(t.cancelled)throw Error('Transfer cancelled');if(failure)throw failure;const chunk=await source.call('read',{id:file.id,offset});const bytes=chunk.data.length/4*3-(chunk.data.endsWith('==')?2:chunk.data.endsWith('=')?1:0);if(!bytes)throw Error('Source file ended early');const position=offset;offset+=bytes;done+=bytes;
+     const job=target.call('write',{transfer:receiver.id,index,offset:position,data:chunk.data,sha256:chunk.sha256}).then(()=>{acknowledged+=bytes;progress();});pending.add(job);job.catch(e=>{failure=e;});job.finally(()=>pending.delete(job)).catch(()=>{});if(pending.size>=4)await Promise.race(pending);
+    }}
+   await Promise.all(pending);if(failure)throw failure;if(t.cancelled)throw Error('Transfer cancelled');const result=await target.call('finish',{transfer:receiver.id});receiver=null;if(version===generation){$('files-progress').value=100;$('files-status').textContent='Completed: '+result.name+' · '+size(done);}
+  }catch(e){if(version===generation)$('files-status').textContent=e.message;}
+  finally{await Promise.allSettled(pending);if(receiver)await target.call('abort',{transfer:receiver.id}).catch(()=>{});if(plan)await source.call('release',{ids:plan.files.map(f=>f.id)}).catch(()=>{});if(task===t)task=null;if(version===generation){controls();await browse(other,panes[other].listing?.id);}}
+ }
+ for(const side of ['local','remote']){$(side+'-up').onclick=()=>browse(side,panes[side].listing?.parent, !panes[side].listing?.parent);$(side+'-refresh').onclick=()=>browse(side,panes[side].listing?.id,!panes[side].listing?.id);$(side+'-locations').onclick=()=>browse(side,null,true);$(side+'-send').onclick=()=>transfer(side).catch(e=>toast(e.message));}
+ $('files-cancel').onclick=()=>{if(task){task.cancelled=true;$('files-status').textContent='Cancelling transfer…';}};
+ $('files-back').onclick=()=>{$('files-page').hidden=true;};
+ async function open(){if(!available())return;$('files-page').hidden=false;if(!panes.local.listing&&!panes.remote.listing)await Promise.all(['local','remote'].map(side=>browse(side)));}
+ for(const id of ['files-viewer','files-host'])$(id).onclick=()=>open().catch(e=>toast(e.message));
+ return {available,reset(){generation++;if(task)task.cancelled=true;task=null;for(const p of Object.values(panes)){p.listing=null;p.selected=null;}$('files-page').hidden=true;$('files-status').textContent='No active transfer';$('files-progress').value=0;for(const side of ['local','remote'])$(side+'-entries').replaceChildren();available();controls();}};
+}};

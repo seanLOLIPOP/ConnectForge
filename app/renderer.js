@@ -1,5 +1,6 @@
 'use strict';
 const $=id=>document.getElementById(id);let state=null,current=null,pendingIncoming=null,toastTimer,statsTimer;
+const filesUI=SIFileUI.create({api:window.si,session:()=>current,toast});
 const platform=p=>({win32:'Windows',darwin:'macOS',linux:'Linux'}[p]||p);
 function toast(message){$('toast').textContent=message;$('toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').hidden=true,6500);}
 const attempt=fn=>async(...args)=>{try{return await fn(...args);}catch(e){toast(e.message);}};
@@ -42,6 +43,7 @@ function addScreenTrack(pc,track,stream){
   const sender=pc.addTrack(track,stream);preferHardwareCodec(pc.getTransceivers().find(t=>t.sender===sender));
 }
 function peer(s,relay=false){
+  s.filesRPC?.close();s.filesRPC=null;s.fileChannel?.close();s.fileChannel=null;s.peerFilesVersion=0;filesUI.reset();window.si.filesEnd(s.id).catch(()=>{});
   if(s.role==='host')window.si.release(s.id).catch(()=>{});
   s.pointerSender?.dispose();s.pointerSender=null;s.inputForwarder?.dispose();s.inputForwarder=null;s.motionChannel?.close();s.motionChannel=null;s.peerInputVersion=0;s.bufferSample=null;s.controlRTT=null;s.tunedRelay=null;s.videoController=null;s.pressureSample=null;
   if(s.clipboardEnabled)window.si.clipboardEnable({session:s.id,enabled:false}).catch(()=>{});
@@ -49,7 +51,7 @@ function peer(s,relay=false){
   const pc=new RTCPeerConnection({iceServers:s.iceServers,iceTransportPolicy:relay?'relay':'all'});s.pc=pc;s.candidates=[];s.remoteReady=false;s.relay=relay;
   pc.onicecandidate=e=>{if(e.candidate)window.si.signal({session:s.id,payload:{kind:'candidate',candidate:e.candidate.toJSON()}}).catch(e=>toast(e.message));};
   pc.ontrack=e=>{SILatency.lowDelayReceiver(e.receiver);$('remote-video').srcObject=e.streams[0]||new MediaStream([e.track]);$('viewer-message').hidden=true;};
-  pc.ondatachannel=e=>{if(e.channel.label==='input')bindChannel(s,e.channel);else if(e.channel.label==='motion-v1'&&s.peerInputVersion===2)bindMotion(s,e.channel);else if(e.channel.label==='clipboard-v1'&&s.peerClipboard)bindClipboard(s,e.channel);else e.channel.close();};
+  pc.ondatachannel=e=>{if(e.channel.label==='input')bindChannel(s,e.channel);else if(e.channel.label==='motion-v1'&&s.peerInputVersion===2)bindMotion(s,e.channel);else if(e.channel.label==='files-v1'&&s.peerFilesVersion===1)bindFiles(s,e.channel);else if(e.channel.label==='clipboard-v1'&&s.peerClipboard)bindClipboard(s,e.channel);else e.channel.close();};
   pc.onconnectionstatechange=()=>{
     if(current!==s||s.pc!==pc)return;
     if(pc.connectionState==='connected'){clearTimeout(s.timeout);$('viewer-message').hidden=true;updateStats(s);}
@@ -121,6 +123,11 @@ for(const id of ['clipboard-viewer','clipboard-host','clipboard-saved'])$(id).on
 $('clipboard-close').onclick=()=>$('clipboard-dialog').close();
 $('clipboard-clear').onclick=attempt(async()=>{await window.si.clipboardClear();renderClipboard(await window.si.clipboardList());});
 $('clipboard-enabled').onchange=attempt(async()=>{const s=current;if(!s)return;const b=await window.si.clipboardEnable({session:s.id,enabled:$('clipboard-enabled').checked});if(current!==s)return;renderClipboard(b);if(s.clipboardChannel?.readyState==='open')s.clipboardChannel.send(s.clipboardEnabled?'S1':'S0');});
+function bindFiles(s,channel){
+ if(s.fileChannel){channel.close();return;}s.fileChannel=channel;
+ s.filesRPC=SIFileRPC.create({channel,handle:request=>window.si.files({session:s.id,request}),onClose:()=>{if(current===s&&s.fileChannel===channel){s.fileChannel=null;filesUI.reset();window.si.filesEnd(s.id).catch(()=>{});}}});
+ channel.onopen=()=>{if(current===s)filesUI.available();};filesUI.available();
+}
 function bindClipboard(s,channel){
   if(s.clipboardChannel){channel.close();return;}s.clipboardChannel=channel;
   channel.onopen=()=>{if(current!==s)return;channel.send(s.clipboardEnabled?'S1':'S0');clipboardStatus();};
@@ -147,19 +154,19 @@ async function startViewer(b){
 }
 async function offer(s,relay){
   if(s.pc){s.pc.onconnectionstatechange=null;s.pc.close();}const pc=peer(s,relay);bindChannel(s,pc.createDataChannel('input',{ordered:true}));preferHardwareCodec(pc.addTransceiver('video',{direction:'recvonly'}));
-  await pc.setLocalDescription(await pc.createOffer());await window.si.signal({session:s.id,payload:{kind:'offer',description:pc.localDescription.toJSON(),clipboardVersion:1,inputVersion:2,qualityVersion:1}});
+  await pc.setLocalDescription(await pc.createOffer());await window.si.signal({session:s.id,payload:{kind:'offer',description:pc.localDescription.toJSON(),clipboardVersion:1,inputVersion:2,qualityVersion:1,filesVersion:1}});
 }
 async function signal(b){
   const s=current;if(!s||s.id!==b.session)return;const p=b.payload;
   if(p.kind==='restart'&&s.role==='host'){await s.ready;if(s.pc){s.pc.onconnectionstatechange=null;s.pc.close();}peer(s,p.relay===true);return;}
   if(p.kind==='candidate'){if(s.remoteReady)await s.pc.addIceCandidate(p.candidate);else s.candidates.push(p.candidate);return;}
   if(p.kind==='offer'&&s.role==='host'){
-    s.peerClipboard=p.clipboardVersion===1;s.peerInputVersion=p.inputVersion===2?2:0;
+    s.peerFilesVersion=p.filesVersion===1?1:0;s.peerClipboard=p.clipboardVersion===1;s.peerInputVersion=p.inputVersion===2?2:0;
     await s.ready;if(current!==s)return;const pc=s.pc;await pc.setRemoteDescription(p.description);for(const t of pc.getTransceivers())preferHardwareCodec(t);s.remoteReady=true;for(const c of s.candidates)await pc.addIceCandidate(c);s.candidates=[];await pc.setLocalDescription(await pc.createAnswer());
     for(const sender of pc.getSenders())await SILatency.tuneSender(sender,{relay:s.relay});
-    await window.si.signal({session:s.id,payload:{kind:'answer',description:pc.localDescription.toJSON(),clipboardVersion:1,inputVersion:2,qualityVersion:1}});return;
+    await window.si.signal({session:s.id,payload:{kind:'answer',description:pc.localDescription.toJSON(),clipboardVersion:1,inputVersion:2,qualityVersion:1,filesVersion:1}});return;
   }
-  if(p.kind==='answer'&&s.role==='viewer'){s.peerQuality=p.qualityVersion===1;sendQuality(s);await s.pc.setRemoteDescription(p.description);s.remoteReady=true;for(const c of s.candidates)await s.pc.addIceCandidate(c);s.candidates=[];s.peerInputVersion=p.inputVersion===2?2:0;if(s.peerInputVersion===2)bindMotion(s,s.pc.createDataChannel('motion-v1',{ordered:false,maxRetransmits:0}));s.peerClipboard=p.clipboardVersion===1;if(s.peerClipboard)bindClipboard(s,s.pc.createDataChannel('clipboard-v1',{ordered:true}));}
+  if(p.kind==='answer'&&s.role==='viewer'){s.peerFilesVersion=p.filesVersion===1?1:0;if(s.peerFilesVersion===1)bindFiles(s,s.pc.createDataChannel('files-v1',{ordered:true}));s.peerQuality=p.qualityVersion===1;sendQuality(s);await s.pc.setRemoteDescription(p.description);s.remoteReady=true;for(const c of s.candidates)await s.pc.addIceCandidate(c);s.candidates=[];s.peerInputVersion=p.inputVersion===2?2:0;if(s.peerInputVersion===2)bindMotion(s,s.pc.createDataChannel('motion-v1',{ordered:false,maxRetransmits:0}));s.peerClipboard=p.clipboardVersion===1;if(s.peerClipboard)bindClipboard(s,s.pc.createDataChannel('clipboard-v1',{ordered:true}));}
 }
 async function retryRelay(s){
   if(current!==s||s.retrying||s.role!=='viewer')return;s.retrying=true;
@@ -199,6 +206,7 @@ function updateStats(s){
   };refresh();statsTimer=setInterval(refresh,1500);
 }
 function closeLocal(){
+  current?.filesRPC?.close();current?.fileChannel?.close();filesUI.reset();if(current)window.si.filesEnd(current.id).catch(()=>{});
   if(nativeFullscreen)window.si.fullscreen(false).then(setFullscreenState).catch(()=>{});
   for(const id of ['resolution','bitrate']){$(id).value='0';$(id).disabled=true;}
   const s=current;current=null;clearInterval(statsTimer);if(s){s.pointerSender?.dispose();s.inputForwarder?.dispose();clearTimeout(s.timeout);clearTimeout(s.disconnectTimer);s.pc&&(s.pc.onconnectionstatechange=null);s.motionChannel?.close();s.channel?.close();s.clipboardChannel?.close();s.pc?.close();for(const track of s.stream?.getTracks()||[])track.stop();window.si.clipboardEnable({session:s.id,enabled:false}).catch(()=>{});window.si.release(s.id).catch(()=>{});}clipboardStatus();

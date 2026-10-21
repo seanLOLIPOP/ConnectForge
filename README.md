@@ -1,8 +1,16 @@
 # ConnectForge (SI Remote) — portable preview
 
-Download the [v0.4.10 portable preview](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.10) for Windows, Linux, Intel Mac and Apple Silicon Mac. The [portable admin app remains in v0.4.0](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.0). Mac ZIPs are built and verified on GitHub-hosted macOS. Install v0.4.4 manually once to use the new updater.
+Download the [v0.4.11 portable preview](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.11) for Windows, Linux, Intel Mac and Apple Silicon Mac. The [portable admin app remains in v0.4.0](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.0). Mac ZIPs are built and verified on GitHub-hosted macOS. Install v0.4.4 manually once to use the new updater.
 
 Built October 20, 2026. A working remote desktop preview with SI account login, owned-device discovery, approval or explicitly enabled unattended access, screen streaming, native keyboard/mouse control, direct encrypted WebRTC connections, and an authenticated TURN relay on the 5080 server.
+
+## Session file browser and transfers (v0.4.11)
+
+During a session, click Files in the viewer toolbar or sharing banner. Browse both computers side by side, double-click folders, and select a file or folder to copy into the directory open on the opposite side. Locations exposes Home and accessible drives or the filesystem root. The Back to session button returns to remote desktop while a transfer can continue.
+
+Progress, speed and cancellation are included. File checksums are verified, name conflicts receive a numbered name, and partial outputs are cleaned on cancellation or disconnect. Existing files are never intentionally replaced. Files travel over a separate reliable encrypted WebRTC channel; filesystem operations require the active session and main-process browsing handles. Symbolic links and special files are rejected. This preview copies contents and structure, not ownership/ACLs or filesystem metadata. Listings show up to 5,000 items; a folder transfer is limited to 20,000 entries. Transfers restart from the beginning after interruption.
+
+Both computers need v0.4.11; Files is disabled with older peers. All 85 automated tests pass locally. A native Windows test passed production negotiation and bidirectional copies over real WebRTC, including a 2 MB binary folder and an empty folder. Mac/Linux file UI and cross-platform sessions remain unverified. SI Remote Admin remains v0.4.0; load signed release 0.4.11 once its verified manifest is attached.
 
 ## Automatic Mac Settings and writable updates (v0.4.10)
 
