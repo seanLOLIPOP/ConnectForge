@@ -8,7 +8,7 @@ Built October 20, 2026. A working remote desktop preview with SI account login, 
 
 Browser wheel units are normalized to bounded pixels. Small trackpad events retain their distance on Windows, accumulate into wheel steps on Linux, and use pixel scrolling on Mac. This fixes tiny movements becoming full wheel steps and Mac pixel distances being interpreted as lines. Fractional input is retained; scroll residue clears between sessions and gestures. Update the host for corrected native scrolling, and the viewer for unit normalization.
 
-All 61 automated tests pass locally. A native Windows page test confirmed 20 one-pixel inputs scroll 20 pixels and a normal wheel step scrolls 100 pixels. Mac/Linux native scrolling remains unverified. Load signed release 0.4.6 in SI Remote Admin v0.4.0 to offer it.
+All 61 automated tests pass on Windows, Linux and macOS. A native Windows page test confirmed 20 one-pixel inputs scroll 20 pixels and a normal wheel step scrolls 100 pixels. Native Linux scrolling also passed on the 5080: tiny movements accumulate into wheel steps, and a normal wheel input scrolls in the correct direction. Mac native scrolling remains unverified. Load signed release 0.4.6 in SI Remote Admin v0.4.0 to offer it.
 
 ## Responsiveness update (v0.4.5)
 
