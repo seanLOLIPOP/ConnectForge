@@ -42,12 +42,14 @@ function addScreenTrack(pc,track,stream){
   const sender=pc.addTrack(track,stream);preferHardwareCodec(pc.getTransceivers().find(t=>t.sender===sender));
 }
 function peer(s,relay=false){
+  if(s.role==='host')window.si.release(s.id).catch(()=>{});
+  s.pointerSender?.dispose();s.pointerSender=null;s.motionChannel?.close();s.motionChannel=null;s.peerInputVersion=0;s.bufferSample=null;s.controlRTT=null;s.tunedRelay=null;
   if(s.clipboardEnabled)window.si.clipboardEnable({session:s.id,enabled:false}).catch(()=>{});
   s.clipboardEnabled=false;s.peerClipboardEnabled=false;s.clipboardChannel=null;s.peerClipboard=false;
   const pc=new RTCPeerConnection({iceServers:s.iceServers,iceTransportPolicy:relay?'relay':'all'});s.pc=pc;s.candidates=[];s.remoteReady=false;s.relay=relay;
   pc.onicecandidate=e=>{if(e.candidate)window.si.signal({session:s.id,payload:{kind:'candidate',candidate:e.candidate.toJSON()}}).catch(e=>toast(e.message));};
-  pc.ontrack=e=>{$('remote-video').srcObject=e.streams[0]||new MediaStream([e.track]);$('viewer-message').hidden=true;};
-  pc.ondatachannel=e=>{if(e.channel.label==='input')bindChannel(s,e.channel);else if(e.channel.label==='clipboard-v1'&&s.peerClipboard)bindClipboard(s,e.channel);};
+  pc.ontrack=e=>{SILatency.lowDelayReceiver(e.receiver);$('remote-video').srcObject=e.streams[0]||new MediaStream([e.track]);$('viewer-message').hidden=true;};
+  pc.ondatachannel=e=>{if(e.channel.label==='input')bindChannel(s,e.channel);else if(e.channel.label==='motion-v1'&&s.peerInputVersion===2)bindMotion(s,e.channel);else if(e.channel.label==='clipboard-v1'&&s.peerClipboard)bindClipboard(s,e.channel);else e.channel.close();};
   pc.onconnectionstatechange=()=>{
     if(current!==s||s.pc!==pc)return;
     if(pc.connectionState==='connected'){clearTimeout(s.timeout);$('viewer-message').hidden=true;updateStats(s);}
@@ -59,13 +61,29 @@ function peer(s,relay=false){
   return pc;
 }
 function bindChannel(s,channel){
+  s.pointerSender?.dispose();
   s.channel=channel;channel.onopen=()=>{if(s.role==='viewer'){$('video-area').focus();$('viewer-message').hidden=true;}};
   let count=0,windowStart=performance.now();channel.onmessage=e=>{
-    if(s.role!=='host'||current!==s||typeof e.data!=='string'||e.data.length>1024)return;
+    if(current!==s||s.channel!==channel||typeof e.data!=='string'||e.data.length>1024)return;
     if(performance.now()-windowStart>1000){count=0;windowStart=performance.now();}if(++count>300)return;
-    try{const event=JSON.parse(e.data);if(event.kind==='release')window.si.release(s.id);else window.si.input({session:s.id,event});}catch{}
+    try{const event=JSON.parse(e.data);
+      if(event.kind==='ping'&&s.role==='host'&&s.peerInputVersion===2&&Number.isFinite(event.id)){channel.send(JSON.stringify({kind:'pong',id:event.id}));return;}
+      if(event.kind==='pong'&&s.role==='viewer'){if(event.id===s.pingAt)s.controlRTT=performance.now()-event.id;return;}
+      if(s.role!=='host')return;
+      if(event.kind==='release')window.si.release(s.id).catch(()=>{});else window.si.input({session:s.id,event}).catch(()=>{});
+    }catch{}
   };
-  channel.onclose=()=>{if(s.role==='host')window.si.release(s.id);};
+  channel.onclose=()=>{if(s.role==='host'&&current===s&&s.channel===channel)window.si.release(s.id).catch(()=>{});};
+  if(s.role==='viewer')s.pointerSender=SILatency.createPointerSender({
+    modern:()=>s.peerInputVersion===2,
+    sendReliable:event=>{if(current!==s||channel.readyState!=='open')return false;channel.send(JSON.stringify(event));return true;},
+    sendMotion:event=>{if(current!==s)return true;const c=s.motionChannel?.readyState==='open'?s.motionChannel:channel;if(c.readyState!=='open'||c.bufferedAmount>(c===channel?4096:1024))return false;c.send(JSON.stringify(event));return true;},
+    schedule:fn=>requestAnimationFrame(fn),cancel:id=>cancelAnimationFrame(id),idleSchedule:fn=>setTimeout(fn,80),idleCancel:id=>clearTimeout(id)
+  });
+}
+function bindMotion(s,channel){
+  if(s.motionChannel){channel.close();return;}s.motionChannel=channel;let count=0,start=performance.now();
+  channel.onmessage=e=>{if(current!==s||s.motionChannel!==channel||s.role!=='host'||typeof e.data!=='string'||e.data.length>256)return;if(performance.now()-start>1000){count=0;start=performance.now();}if(++count>240)return;try{const event=JSON.parse(e.data);if(event.kind==='move'&&Number.isSafeInteger(event.seq)&&event.seq>=0)window.si.input({session:s.id,event}).catch(()=>{});}catch{}};
 }
 let clipboardState={entries:[],persistent:false,enabled:false};
 function clipboardStatus(){
@@ -101,9 +119,9 @@ function bindClipboard(s,channel){
 async function startHost(b){
   closeLocal();const s=current={id:b.session,role:'host',iceServers:b.iceServers,stream:null,channel:null};peer(s);$('sharing-banner').hidden=false;
   s.ready=(async()=>{
-    const stream=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:{ideal:24,max:30},width:{max:1920},height:{max:1080}},audio:false});
+    const stream=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:{ideal:60,max:60},width:{max:1920},height:{max:1080}},audio:false});
     if(current!==s){stream.getTracks().forEach(t=>t.stop());return;}
-    s.stream=stream;for(const t of stream.getTracks()){addScreenTrack(s.pc,t,stream);t.onended=()=>window.si.end(s.id);}
+    s.stream=stream;for(const t of stream.getTracks()){try{t.contentHint='motion';}catch{}addScreenTrack(s.pc,t,stream);t.onended=()=>window.si.end(s.id);}
   })();
   try{await s.ready;}catch(e){toast('Could not share this screen: '+e.message);await window.si.end(s.id);closeLocal();}
 }
@@ -112,18 +130,19 @@ async function startViewer(b){
 }
 async function offer(s,relay){
   if(s.pc){s.pc.onconnectionstatechange=null;s.pc.close();}const pc=peer(s,relay);bindChannel(s,pc.createDataChannel('input',{ordered:true}));preferHardwareCodec(pc.addTransceiver('video',{direction:'recvonly'}));
-  await pc.setLocalDescription(await pc.createOffer());await window.si.signal({session:s.id,payload:{kind:'offer',description:pc.localDescription.toJSON(),clipboardVersion:1}});
+  await pc.setLocalDescription(await pc.createOffer());await window.si.signal({session:s.id,payload:{kind:'offer',description:pc.localDescription.toJSON(),clipboardVersion:1,inputVersion:2}});
 }
 async function signal(b){
   const s=current;if(!s||s.id!==b.session)return;const p=b.payload;
   if(p.kind==='restart'&&s.role==='host'){await s.ready;if(s.pc){s.pc.onconnectionstatechange=null;s.pc.close();}peer(s,p.relay===true);return;}
   if(p.kind==='candidate'){if(s.remoteReady)await s.pc.addIceCandidate(p.candidate);else s.candidates.push(p.candidate);return;}
   if(p.kind==='offer'&&s.role==='host'){
-    s.peerClipboard=p.clipboardVersion===1;
-    await s.ready;if(current!==s)return;const pc=s.pc;await pc.setRemoteDescription(p.description);for(const t of pc.getTransceivers())preferHardwareCodec(t);s.remoteReady=true;for(const c of s.candidates)await pc.addIceCandidate(c);s.candidates=[];await pc.setLocalDescription(await pc.createAnswer());await window.si.signal({session:s.id,payload:{kind:'answer',description:pc.localDescription.toJSON(),clipboardVersion:1}});
-    for(const sender of pc.getSenders()){if(sender.track?.kind==='video'){const params=sender.getParameters();if(params.encodings?.length){params.encodings[0].maxBitrate=6000000;await sender.setParameters(params).catch(()=>{});}}}return;
+    s.peerClipboard=p.clipboardVersion===1;s.peerInputVersion=p.inputVersion===2?2:0;
+    await s.ready;if(current!==s)return;const pc=s.pc;await pc.setRemoteDescription(p.description);for(const t of pc.getTransceivers())preferHardwareCodec(t);s.remoteReady=true;for(const c of s.candidates)await pc.addIceCandidate(c);s.candidates=[];await pc.setLocalDescription(await pc.createAnswer());
+    for(const sender of pc.getSenders())await SILatency.tuneSender(sender,{relay:s.relay});
+    await window.si.signal({session:s.id,payload:{kind:'answer',description:pc.localDescription.toJSON(),clipboardVersion:1,inputVersion:2}});return;
   }
-  if(p.kind==='answer'&&s.role==='viewer'){await s.pc.setRemoteDescription(p.description);s.remoteReady=true;for(const c of s.candidates)await s.pc.addIceCandidate(c);s.candidates=[];s.peerClipboard=p.clipboardVersion===1;if(s.peerClipboard)bindClipboard(s,s.pc.createDataChannel('clipboard-v1',{ordered:true}));}
+  if(p.kind==='answer'&&s.role==='viewer'){await s.pc.setRemoteDescription(p.description);s.remoteReady=true;for(const c of s.candidates)await s.pc.addIceCandidate(c);s.candidates=[];s.peerInputVersion=p.inputVersion===2?2:0;if(s.peerInputVersion===2)bindMotion(s,s.pc.createDataChannel('motion-v1',{ordered:false,maxRetransmits:0}));s.peerClipboard=p.clipboardVersion===1;if(s.peerClipboard)bindClipboard(s,s.pc.createDataChannel('clipboard-v1',{ordered:true}));}
 }
 async function retryRelay(s){
   if(current!==s||s.retrying||s.role!=='viewer')return;s.retrying=true;
@@ -142,23 +161,31 @@ function updateStats(s){
     if(current!==s||s.pc!==pc)return;
     try{
       const stats=await pc.getStats();if(current!==s||s.pc!==pc)return;
-      const media=videoStats(stats,s.role);if(s.role==='host'){$('sharing-stats').textContent=media;return;}
+      const media=videoStats(stats,s.role);
       let pair;stats.forEach(r=>{if(r.type==='transport'&&r.selectedCandidatePairId)pair=stats.get(r.selectedCandidatePairId);});
       if(!pair)stats.forEach(r=>{if(r.type==='candidate-pair'&&r.state==='succeeded'&&r.nominated)pair=r;});
+      if(s.role==='host'){
+        $('sharing-stats').textContent=media;
+        if(pair){const relay=[stats.get(pair.localCandidateId)?.candidateType,stats.get(pair.remoteCandidateId)?.candidateType].includes('relay');if(s.tunedRelay!==relay){s.tunedRelay=relay;for(const sender of pc.getSenders())await SILatency.tuneSender(sender,{relay});}}
+        return;
+      }
       if(pair){const local=stats.get(pair.localCandidateId),remote=stats.get(pair.remoteCandidateId);$('route').textContent=[local?.candidateType,remote?.candidateType].includes('relay')?'Encrypted relay':'Direct · encrypted';}
-      $('viewer-stats').textContent=[Number.isFinite(pair?.currentRoundTripTime)?Math.round(pair.currentRoundTripTime*1000)+' ms RTT':'',media].filter(Boolean).join(' · ');
+      if(s.peerInputVersion===2&&s.channel?.readyState==='open'){s.pingAt=performance.now();s.channel.send(JSON.stringify({kind:'ping',id:s.pingAt}));}
+      const inbound=[...stats.values()].find(r=>r.type==='inbound-rtp'&&r.kind==='video'&&r.framesDecoded>0),previous=s.bufferSample;
+      let bufferMs;if(inbound){const frames=inbound.jitterBufferEmittedCount-(previous?.frames||0),delay=inbound.jitterBufferDelay-(previous?.delay||0);if(frames>0)bufferMs=delay*1000/frames;s.bufferSample={frames:inbound.jitterBufferEmittedCount,delay:inbound.jitterBufferDelay};}
+      $('viewer-stats').textContent=[Number.isFinite(pair?.currentRoundTripTime)?Math.round(pair.currentRoundTripTime*1000)+' ms RTT':'',media,Number.isFinite(bufferMs)?Math.round(bufferMs)+' ms buffer':'',Number.isFinite(s.controlRTT)?Math.round(s.controlRTT)+' ms control':''].filter(Boolean).join(' · ');
     }catch{}
   };refresh();statsTimer=setInterval(refresh,1500);
 }
 function closeLocal(){
-  const s=current;current=null;clearInterval(statsTimer);if(s){clearTimeout(s.timeout);clearTimeout(s.disconnectTimer);s.pc&&(s.pc.onconnectionstatechange=null);s.channel?.close();s.clipboardChannel?.close();s.pc?.close();for(const track of s.stream?.getTracks()||[])track.stop();window.si.clipboardEnable({session:s.id,enabled:false}).catch(()=>{});window.si.release(s.id).catch(()=>{});}clipboardStatus();
+  const s=current;current=null;clearInterval(statsTimer);if(s){s.pointerSender?.dispose();clearTimeout(s.timeout);clearTimeout(s.disconnectTimer);s.pc&&(s.pc.onconnectionstatechange=null);s.motionChannel?.close();s.channel?.close();s.clipboardChannel?.close();s.pc?.close();for(const track of s.stream?.getTracks()||[])track.stop();window.si.clipboardEnable({session:s.id,enabled:false}).catch(()=>{});window.si.release(s.id).catch(()=>{});}clipboardStatus();
   $('remote-video').srcObject=null;$('viewer').hidden=true;$('sharing-banner').hidden=true;$('route').textContent='Finding the best route';$('viewer-stats').textContent='';$('sharing-stats').textContent='';
 }
 $('disconnect').onclick=$('stop-sharing').onclick=attempt(async()=>{await window.si.end(current?.id);closeLocal();});
 $('fullscreen').onclick=attempt(async()=>{if(document.fullscreenElement)await document.exitFullscreen();else await $('viewer').requestFullscreen();});
-function control(event){if(current?.role==='viewer'&&current.channel?.readyState==='open')current.channel.send(JSON.stringify(event));}
+function control(event){const s=current;if(s?.role!=='viewer'||s.channel?.readyState!=='open')return;if(event.kind==='move')s.pointerSender?.move(event);else s.pointerSender?.control(event);}
 function point(e){const v=$('remote-video'),rect=v.getBoundingClientRect();if(!v.videoWidth||!v.videoHeight)return null;const scale=Math.min(rect.width/v.videoWidth,rect.height/v.videoHeight),w=v.videoWidth*scale,h=v.videoHeight*scale,left=rect.left+(rect.width-w)/2,top=rect.top+(rect.height-h)/2;if(e.clientX<left||e.clientX>left+w||e.clientY<top||e.clientY>top+h)return null;return {x:(e.clientX-left)/w,y:(e.clientY-top)/h};}
-let lastMove=0;const area=$('video-area');area.onpointermove=e=>{if(performance.now()-lastMove<16)return;lastMove=performance.now();const p=point(e);if(p)control({kind:'move',...p});};area.onpointerdown=e=>{const p=point(e);if(!p)return;e.preventDefault();area.focus();area.setPointerCapture(e.pointerId);control({kind:'move',...p});control({kind:'button',button:e.button,down:true});};area.onpointerup=e=>{e.preventDefault();control({kind:'button',button:e.button,down:false});};area.oncontextmenu=e=>e.preventDefault();area.addEventListener('wheel',e=>{e.preventDefault();control({kind:'scroll',dy:e.deltaY});},{passive:false});area.onkeydown=e=>{if(e.code==='Escape'&&document.fullscreenElement)return;e.preventDefault();control({kind:'key',code:e.code,down:true});};area.onkeyup=e=>{e.preventDefault();control({kind:'key',code:e.code,down:false});};area.onblur=()=>control({kind:'release'});window.addEventListener('blur',()=>control({kind:'release'}));
+const area=$('video-area');area.onpointermove=e=>{const p=point(e);if(p)control({kind:'move',...p});};area.onpointerdown=e=>{const p=point(e);if(!p)return;e.preventDefault();area.focus();area.setPointerCapture(e.pointerId);current?.pointerSender?.control({kind:'button',button:e.button,down:true},p);};area.onpointerup=e=>{e.preventDefault();current?.pointerSender?.control({kind:'button',button:e.button,down:false},point(e));};area.oncontextmenu=e=>e.preventDefault();area.addEventListener('wheel',e=>{e.preventDefault();current?.pointerSender?.control({kind:'scroll',dy:e.deltaY},point(e));},{passive:false});area.onkeydown=e=>{if(e.code==='Escape'&&document.fullscreenElement)return;e.preventDefault();control({kind:'key',code:e.code,down:true});};area.onkeyup=e=>{e.preventDefault();control({kind:'key',code:e.code,down:false});};area.onblur=()=>control({kind:'release'});window.addEventListener('blur',()=>control({kind:'release'}));
 let signalQueue=Promise.resolve();
 window.si.onEvent(b=>{
   if(b.type==='clipboard-history')renderClipboard(b);

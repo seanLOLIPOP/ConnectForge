@@ -5,6 +5,7 @@ const WebSocket=require('ws');const {createInput}=require('./input.cjs');
 const {createCloudflare}=require('./cloudflare.cjs');
 const {createClipboardHistory}=require('./clipboard.cjs');
 const {createUpdater}=require('./updater.cjs');
+const {createPointerReceiver}=require('./latency.js');
 const assets=path.join(__dirname,'..','assets'),defaults=JSON.parse(fs.readFileSync(path.join(assets,'server.json'),'utf8'));
 const portableRoot=process.env.SI_REMOTE_PROFILE||process.env.PORTABLE_EXECUTABLE_DIR||(process.env.APPIMAGE?path.dirname(process.env.APPIMAGE):app.isPackaged?(process.platform==='darwin'?path.resolve(process.execPath,'../../../..'):path.dirname(process.execPath)):path.join(__dirname,'..'));
 let portable=true,dataDir=path.join(portableRoot,'SI Remote Data');
@@ -19,12 +20,13 @@ if(!app.isPackaged&&process.env.SI_REMOTE_TEST_SERVER)config.server=process.env.
 const save=()=>{fs.writeFileSync(configFile,JSON.stringify(config,null,2),{mode:0o600});};save();
 const caFile=path.join(assets,'server-ca.pem'),ca=fs.existsSync(caFile)?fs.readFileSync(caFile):undefined;
 let win,tray,socket,token=null,user=null,devices=[],iceServers=[],relayAvailable=false,input,hostSession=null,viewerSession=null,pendingHost=null,selectedSource=null,heartbeat,reconnectTimer,quitting=false;
+let pointerInput,inputBounds=null;
 const cloudflare=createCloudflare({packaged:app.isPackaged,resourcesPath:process.resourcesPath});let serviceURL=config.server,iceReady=Promise.resolve();
 const clipboardHistory=createClipboardHistory({clipboard,storage:{available:secureStorage,encrypt:text=>safeStorage.encryptString(text),decrypt:data=>safeStorage.decryptString(data)},directory:dataDir,onLocal:b=>emit('clipboard-local',b),onChange:b=>emit('clipboard-history',b)});
 const updater=createUpdater({app,dialog,window:()=>win,request,publicKey:fs.readFileSync(path.join(assets,'update-public.pem')),root:portableRoot,dataDir,busy:()=>!!(hostSession||viewerSession||pendingHost),identity:()=>({'X-SI-Device':config.deviceId,'X-SI-Device-Key':config.identityKey})});
 async function apiTransport(){if(config.server===defaults.url&&defaults.tunnelHostname){const port=await cloudflare.bridge(defaults.tunnelHostname);serviceURL='https://127.0.0.1:'+port;}return serviceURL;}
 async function prepareIce(b){const host=b.cloudflareRelayHost||((config.server===defaults.url)?defaults.relayTunnelHostname:null);let servers=b.iceServers||[];if(host){const port=await cloudflare.bridge(host);servers=servers.map(server=>{const urls=Array.isArray(server.urls)?server.urls:[server.urls];return urls.some(url=>url.startsWith('turn:'))?{...server,urls:[`turn:127.0.0.1:${port}?transport=tcp`]}:server;});}iceServers=servers;relayAvailable=b.relayAvailable===true;return servers;}
-function emit(type,data){if(win&&!win.isDestroyed())win.webContents.send('si:event',{type,...data});}
+function emit(type,data){if(win&&!win.isDestroyed()){const throttle=!(hostSession||viewerSession);if(win.webContents.backgroundThrottling!==throttle)win.webContents.setBackgroundThrottling(throttle);win.webContents.send('si:event',{type,...data});}}
 function secureStorage(){return safeStorage.isEncryptionAvailable()&&!(process.platform==='linux'&&safeStorage.getSelectedStorageBackend()==='basic_text');}
 function tlsOptions(){return {ca:ca?[...require('node:tls').rootCertificates,ca]:undefined,minVersion:'TLSv1.2'};}
 async function request(endpoint,method='GET',body,extraHeaders={}){
@@ -37,7 +39,7 @@ async function request(endpoint,method='GET',body,extraHeaders={}){
   });
 }
 function send(b){if(socket?.readyState!==WebSocket.OPEN)throw Error('Connection service is offline');socket.send(JSON.stringify(b));}
-function stopHost(){clipboardHistory.setSession(null);input?.release();hostSession=null;selectedSource=null;emit('stop-host',{});updateTray();}
+function stopHost(){clipboardHistory.setSession(null);input?.release();pointerInput?.reset();inputBounds=null;hostSession=null;selectedSource=null;emit('stop-host',{});updateTray();}
 function endAll(){if(hostSession)try{send({type:'end',session:hostSession});}catch{}if(viewerSession)try{send({type:'end',session:viewerSession});}catch{}stopHost();viewerSession=null;emit('stop-viewer',{});}
 function updateTray(){
   if(!tray)return;tray.setToolTip(hostSession?'SI Remote · Desktop is being controlled':'SI Remote · '+(user?'Signed in':'Signed out'));
@@ -52,7 +54,7 @@ async function acceptHost(id){
   if(hostSession||viewerSession)throw Error('Finish the current session first');
   if(process.platform==='darwin'&&!systemPreferences.isTrustedAccessibilityClient(true))throw Error('Enable SI Remote in System Settings → Privacy & Security → Accessibility');
   const sources=await desktopCapturer.getSources({types:['screen'],thumbnailSize:{width:1,height:1}});if(!sources.length)throw Error('Screen capture permission is required');
-  selectedSource=sources.find(s=>s.display_id===config.displayId)||sources[0];hostSession=id;pendingHost=null;
+  selectedSource=sources.find(s=>s.display_id===config.displayId)||sources[0];inputBounds=null;pointerInput?.reset();hostSession=id;pendingHost=null;
   send({type:'accept',session:id});emit('start-host',{session:id,sourceName:selectedSource.name,iceServers});updateTray();
 }
 function connectSocket(){
@@ -94,8 +96,9 @@ handle('approve',id=>acceptHost(id));
 handle('signal',b=>{if(!b||![hostSession,viewerSession].filter(Boolean).includes(b.session))throw Error('Session is not active');send({type:'signal',session:b.session,payload:b.payload});});
 handle('end',id=>{if(id&&pendingHost===id){send({type:'end',session:id});pendingHost=null;}else if(!id||[hostSession,viewerSession].includes(id)){endAll();}});
 handle('remove',async id=>{if(typeof id!=='string'||!devices.some(d=>d.id===id))throw Error('Unknown computer');await request('/api/devices/'+encodeURIComponent(id),'DELETE');});
-handle('input',({session:id,event})=>{if(!hostSession||id!==hostSession)return false;const display=screen.getAllDisplays().find(d=>String(d.id)===selectedSource?.display_id)||screen.getPrimaryDisplay();let bounds=display.bounds;if(process.platform==='win32'){const a=screen.dipToScreenPoint({x:bounds.x,y:bounds.y}),b=screen.dipToScreenPoint({x:bounds.x+bounds.width-1,y:bounds.y+bounds.height-1});bounds={x:a.x,y:a.y,width:b.x-a.x+1,height:b.y-a.y+1};}input.apply(event,bounds);if(!app.isPackaged&&process.env.SI_REMOTE_E2E&&event?.kind==='key')fs.appendFileSync(process.env.SI_REMOTE_E2E+'.input',JSON.stringify({kind:event.kind,code:event.code,down:event.down})+'\n');return true;});
-handle('release',id=>{if(id===hostSession)input.release();});
+function hostBounds(){if(inputBounds)return inputBounds;const display=screen.getAllDisplays().find(d=>String(d.id)===selectedSource?.display_id)||screen.getPrimaryDisplay();let bounds=display.bounds;if(process.platform==='win32'){const a=screen.dipToScreenPoint({x:bounds.x,y:bounds.y}),b=screen.dipToScreenPoint({x:bounds.x+bounds.width-1,y:bounds.y+bounds.height-1});bounds={x:a.x,y:a.y,width:b.x-a.x+1,height:b.y-a.y+1};}return inputBounds=bounds;}
+handle('input',({session:id,event})=>{if(!hostSession||id!==hostSession)return false;pointerInput.apply(event,hostBounds());if(!app.isPackaged&&process.env.SI_REMOTE_E2E&&event?.kind==='key')fs.appendFileSync(process.env.SI_REMOTE_E2E+'.input',JSON.stringify({kind:event.kind,code:event.code,down:event.down})+'\n');return true;});
+handle('release',id=>{if(id===hostSession){input.release();pointerInput.reset();}});
 function activeClipboard(id){if(!user||!id||![hostSession,viewerSession].includes(id))throw Error('Clipboard session is not active');clipboardHistory.setSession(id);}
 handle('clipboard-list',()=>{if(!user)throw Error('Sign in to use clipboard history');return clipboardHistory.snapshot();});
 handle('clipboard-enable',({session:id,enabled})=>{activeClipboard(id);return clipboardHistory.setEnabled(id,enabled);});
@@ -112,6 +115,8 @@ if(!app.requestSingleInstanceLock())app.quit();else{
   app.on('second-instance',()=>{win?.show();win?.focus();});
   app.whenReady().then(async()=>{
     input=createInput();setInterval(()=>clipboardHistory.tick(),500).unref();
+    pointerInput=createPointerReceiver((event,bounds)=>input.apply(event,bounds));
+    for(const event of ['display-added','display-removed','display-metrics-changed'])screen.on(event,()=>{inputBounds=null;});
     setInterval(()=>{if(user)updater.check().catch(()=>{});},60000).unref();
     session.defaultSession.setPermissionRequestHandler((webContents,permission,callback)=>callback(webContents===win?.webContents&&['media','display-capture'].includes(permission)));
     session.defaultSession.setDisplayMediaRequestHandler(async(req,callback)=>{if(!hostSession||!selectedSource||req.frame!==win.webContents.mainFrame)return callback({});callback({video:selectedSource});},{useSystemPicker:false});

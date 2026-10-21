@@ -1,12 +1,22 @@
 # ConnectForge (SI Remote) — portable preview
 
-Download the [v0.4.0 portable preview](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.0) for Windows, Linux, and Mac.
+Download the [v0.4.1 portable preview](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.1) for Windows and Linux. The [Mac clients and portable admin app remain in v0.4.0](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.0). A new Mac build is pending access to an awake Mac; the responsiveness changes are included in source for all platforms.
 
 Built October 20, 2026. A working remote desktop preview with SI account login, owned-device discovery, approval or explicitly enabled unattended access, screen streaming, native keyboard/mouse control, direct encrypted WebRTC connections, and an authenticated TURN relay on the 5080 server.
 
+## Responsiveness
+
+v0.4.1 requests up to 60 FPS on direct connections (up to 30 FPS on relay) and favors reducing resolution over accumulating lag when the encoder or connection is constrained. The video bandwidth cap is 6 Mbps for direct sessions and 2 Mbps for relay sessions, with relay resolution scaled down by 1.5. The viewer requests the lowest available jitter buffer; this is a hint, not a guarantee of zero buffering. Actual FPS and latency depend on the capture system, GPU, network and relay path. The toolbar shows video buffer delay and control-channel round-trip time separately.
+
+Mouse movement uses a separate encrypted, unordered channel without retransmissions when both apps support it. Only the newest position is sent each frame; an idle position is also sent reliably after 80 ms so a lost final movement cannot leave the pointer behind. Clicks, keys, scrolling and key releases retain reliable ordered delivery. Clicks carry their own coordinates so out-of-order movement cannot change the target. Older clients use the compatible ordered input channel. Update both ends for the full improvement.
+
+Active sessions keep the Electron renderer unthrottled when the host window is hidden or minimized; normal throttling resumes after disconnect. Native input reuses display geometry until a display change instead of querying every mouse event.
+
+Validation: 29 automated tests; direct and Cloudflare TURN sessions on Windows; shared clipboard in both paths; hidden host capture; 1,000-move bursts coalesced into one motion message; interoperability with actual v0.4.0 hosts and viewers. No new Mac build was produced for 0.4.1 because the build Mac was unavailable. Full macOS/Linux remote-session performance remains unverified. Sample comparisons are local test observations, not end-to-end latency guarantees.
+
 ## Online updates and the admin app
 
-Install **0.4.0 once manually** on each computer to enable online updates. Older versions cannot receive update offers. Portable client and admin downloads are separate.
+Install **0.4.0 or later once manually** on each computer to enable online updates. Older versions cannot receive update offers. Use the latest client for a first setup; existing 0.4.0 clients can receive 0.4.1 through the admin app. Portable client and admin downloads are separate.
 
 1. Open **SI Remote Admin** and sign in with the SI account authorized by the server administrator. Passwords are never stored by the admin app.
 2. Enter a published version (for example `0.4.1`) and click **Load signed release**. It loads `update-manifest.json` from this repository's GitHub release and verifies the pinned Ed25519 public key.
@@ -22,23 +32,23 @@ Update administration covers registered device names, owner IDs, OS/architecture
 
 Build all client platforms, collect their artifacts in `dist/`, and run `node scripts/sign-update.mjs` with `SI_UPDATE_SIGNING_KEY` pointing to the release signing private key **outside this project**. Upload `update-manifest.json` with the artifacts to the matching GitHub release tag. The private key is never uploaded, bundled, or stored on the 5080 service. Back it up securely; losing it requires a manual trust-key migration. The public key is pinned in `assets/update-public.pem` on clients and server. Importing a different payload for an existing release version is rejected. Signed manifests cover platform, architecture, filename, version, byte size, and SHA-256; clients reject downgrades and altered artifacts.
 
-Server configuration uses `updateAdminEmails` as a list of trusted SI account emails, checked against the fresh SI identity record on every admin request. Default is no update administrators. Existing session/password-change revocation applies to the admin API too. Admin and update actions are audited in the service database. The source includes 21 automated account, clipboard, update security, migration and restart-consent tests.
+Server configuration uses `updateAdminEmails` as a list of trusted SI account emails, checked against the fresh SI identity record on every admin request. Default is no update administrators. Existing session/password-change revocation applies to the admin API too. Admin and update actions are audited in the service database. The source includes 29 automated account, clipboard, update security, migration and restart-consent tests.
 
 Build the portable admin app with `node scripts/build-admin.mjs` on each native platform. macOS builds must run on macOS. Admin app updates are manual in this release.
 
 ## GPU acceleration
 
-v0.3.0 prefers H.264 to use the operating system’s hardware encoder and decoder when available, keeping other codecs for compatibility. The host sharing banner shows GPU/CPU encoding; the viewer toolbar shows GPU/CPU decoding, codec, frame rate, and network round-trip time. An unknown status means WebRTC did not report acceleration. GPU availability depends on the OS, driver, and hardware; H.264 can also run in software. This change does not require a GPU on the relay server or guarantee lower latency. Capture remains at 24 FPS ideal, 30 FPS maximum. Windows NVIDIA H.264 encoding and D3D11 decoding were verified; Linux/macOS hardware acceleration has not been verified.
+v0.3.0 prefers H.264 to use the operating system’s hardware encoder and decoder when available, keeping other codecs for compatibility. The host sharing banner shows GPU/CPU encoding; the viewer toolbar shows GPU/CPU decoding, codec, frame rate, and network round-trip time. An unknown status means WebRTC did not report acceleration. GPU availability depends on the OS, driver, and hardware; H.264 can also run in software. This change does not require a GPU on the relay server or guarantee lower latency. Capture now requests up to 60 FPS; network/encoder adaptation may lower the actual rate or resolution. Windows NVIDIA H.264 encoding and D3D11 decoding were verified; Linux/macOS hardware acceleration has not been verified.
 
 ## Run
 
-**Windows:** run `SI-Remote-0.4.0-Windows-Portable.exe`. No installer. Alternatively extract the Windows ZIP and run `SI Remote.exe` from that folder.
+**Windows:** run `SI-Remote-0.4.1-Windows-Portable.exe`. No installer. Alternatively extract the Windows ZIP and run `SI Remote.exe` from that folder.
 
 Windows builds are unsigned; macOS bundles are ad-hoc signed without Developer ID signing or notarization. These are private preview downloads, not signed public-store releases.
 
 **Linux x64:** make the AppImage executable and run it, or extract the tar.gz and run `si-remote`. The tar.gz avoids the AppImage FUSE dependency. X11 is supported for remote control; Wayland remote input is not implemented in this preview. The desktop must include libX11 and libXtst. Electron also needs its usual GTK/NSS/desktop runtime libraries. Ubuntu's AppArmor/user-namespace sandbox restrictions can require a system-approved Electron sandbox configuration. Do not disable the Chromium sandbox to work around those restrictions.
 
-**macOS:** extract the matching Apple Silicon (arm64) or Intel (x64) ZIP and open SI Remote.app. v0.4.0 is built on macOS and ad-hoc signed with strict bundle/native-module/helper signature verification. Apple Silicon app launch and native input initialization passed on macOS 26.6; Intel runtime is untested. These builds are not Developer ID signed or notarized. macOS may block them until explicitly approved in Privacy & Security. Grant Screen Recording and Accessibility, then restart the app if macOS requests it. Apple signing/notarization is needed for normal public distribution.
+**macOS:** extract the matching Apple Silicon (arm64) or Intel (x64) ZIP and open SI Remote.app. v0.4.1 is built on macOS and ad-hoc signed with strict bundle/native-module/helper signature verification. Apple Silicon app launch and native input initialization passed on macOS 26.6; Intel runtime is untested. These builds are not Developer ID signed or notarized. macOS may block them until explicitly approved in Privacy & Security. Grant Screen Recording and Accessibility, then restart the app if macOS requests it. Apple signing/notarization is needed for normal public distribution.
 
 1. Sign in with your existing SI email and password. No new account is created.
 2. On the computer to control, open **This computer** and explicitly enable **Unattended access**, then save. Otherwise someone must accept each incoming request.
