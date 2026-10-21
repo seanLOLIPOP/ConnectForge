@@ -188,7 +188,12 @@ function point(e){const v=$('remote-video'),rect=v.getBoundingClientRect();if(!v
 const area=$('video-area');area.onpointermove=e=>{const p=point(e);if(p)control({kind:'move',...p});};area.onpointerdown=e=>{const p=point(e);if(!p)return;e.preventDefault();area.focus();area.setPointerCapture(e.pointerId);current?.pointerSender?.control({kind:'button',button:e.button,down:true},p);};area.onpointerup=e=>{e.preventDefault();current?.pointerSender?.control({kind:'button',button:e.button,down:false},point(e));};area.oncontextmenu=e=>e.preventDefault();area.addEventListener('wheel',e=>{e.preventDefault();current?.pointerSender?.control({kind:'scroll',dy:e.deltaY},point(e));},{passive:false});area.onkeydown=e=>{if(e.code==='Escape'&&document.fullscreenElement)return;e.preventDefault();control({kind:'key',code:e.code,down:true});};area.onkeyup=e=>{e.preventDefault();control({kind:'key',code:e.code,down:false});};area.onblur=()=>control({kind:'release'});window.addEventListener('blur',()=>control({kind:'release'}));
 let signalQueue=Promise.resolve();
 window.si.onEvent(b=>{
-  if(b.type==='clipboard-history')renderClipboard(b);
+  if(b.type==='update-progress'){
+    $('update-progress').hidden=b.stage==='idle';$('update-progress-bar').value=b.percent||0;
+    $('update-progress-title').textContent=b.stage==='retrying'?'Connection interrupted — resuming download':b.stage==='verifying'?'Verifying update':b.stage==='complete'?'Download verified':'Downloading update';
+    $('update-progress-detail').textContent=b.stage==='downloading'?b.percent+'% · '+(b.received/1048576).toFixed(1)+' / '+(b.total/1048576).toFixed(1)+' MB · '+(b.bytesPerSecond/1048576).toFixed(2)+' MB/s'+(b.secondsRemaining!==null?' · about '+Math.ceil(b.secondsRemaining/60)+' min remaining':''):b.stage==='retrying'?'Retry '+b.attempt+' of 3. Downloaded data is retained.':'';
+  }
+  else if(b.type==='clipboard-history')renderClipboard(b);
   else if(b.type==='clipboard-local'){const s=current,c=s?.clipboardChannel;if(s&&s.id===b.session&&s.clipboardEnabled&&s.peerClipboardEnabled&&c?.readyState==='open'&&c.bufferedAmount<32768)c.send('T'+b.text);}
   else if(b.type==='state')render(b);
   else if(b.type==='devices')renderDevices(b.devices);
@@ -203,3 +208,4 @@ window.si.onEvent(b=>{
 window.si.state().then(render).catch(e=>toast(e.message));
 
 $('updates').onclick=attempt(()=>window.si.updates());
+

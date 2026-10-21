@@ -1,6 +1,6 @@
 {
   "name": "si-remote",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "private": true,
   "description": "Portable remote desktop for SI accounts",
   "author": "SI",
@@ -9,8 +9,8 @@
     "start": "electron .",
     "test": "node --test test/*.test.mjs",
     "server": "node server/start.mjs",
-    "build:win": "electron-builder --win portable zip --x64",
-    "build:linux": "electron-builder --linux AppImage tar.gz --x64",
+    "build:win": "electron-builder --win portable zip --x64 --publish never",
+    "build:linux": "electron-builder --linux AppImage tar.gz --x64 --publish never",
     "build:mac": "node scripts/build-mac.mjs",
     "build:admin": "node scripts/build-admin.mjs",
     "sign:update": "node scripts/sign-update.mjs"
@@ -104,3 +104,4 @@
     "@koromix/koffi-darwin-x64": "3.3.3"
   }
 }
+

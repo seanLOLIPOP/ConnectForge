@@ -1,0 +1,8 @@
+Update downloads now show percentage, downloaded size, speed and estimated time remaining. Interrupted transfers retry up to three times and resume saved partial downloads when GitHub supports byte ranges, including after closing and reopening the app. Existing complete files are reused only after SHA-256 verification. This reduces wasted transfers on unstable networks; it does not increase an ISP or hotspot bandwidth limit.
+
+All 36 automated tests pass, including interrupted transfers, resume across attempts, servers ignoring Range, incorrect ranges, checksum failure, oversized responses and cached download verification. Both Mac ZIPs pass extracted signature/architecture/version checks and an Intel launch check on GitHub-hosted macOS. Apple Silicon runtime and full remote-session performance remain unverified for this version.
+
+**Install 0.4.2 manually once to get the improved downloader.** An older installed app still uses its older downloader to fetch this release. Preserve your existing SI Remote Data folder. Use the arm64 ZIP for Apple Silicon and x64 ZIP for Intel Mac. A signed update-manifest.json will be added after the published asset hashes are verified. Admin requires that manifest before this version can be offered.
+
+Windows downloads are unsigned; macOS apps are ad-hoc signed and not Apple notarized, so OS download warnings may persist. Linux control requires X11 and the supported Chromium sandbox setup. Full automatic restart is not verified; manual launch may still be needed after an update. This release improves download reliability and visibility; it does not claim to fix the separate restart handoff issue.
+

@@ -1,26 +1,36 @@
-name: Portable Mac release
+name: Portable release
 on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: [.github/workflows/macos-release.yml, scripts/verify-mac-release.mjs]
+    paths: [.github/workflows/macos-release.yml, app/**, scripts/verify-mac-release.mjs, test/update-download.test.mjs, package.json]
 permissions:
   contents: read
 concurrency:
-  group: portable-mac-release
+  group: portable-release
   cancel-in-progress: false
 jobs:
   build:
-    runs-on: macos-15-intel
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2025
+            platform: windows
+            command: pnpm build:win
+          - runner: ubuntu-24.04
+            platform: linux
+            command: pnpm build:linux
+          - runner: macos-15-intel
+            platform: macos
+            command: pnpm build:mac
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 35
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Verify release source
-        run: |
-          test "$(node -p 'require("./package.json").version')" = '0.4.1'
-          git diff --exit-code v0.4.1 -- app admin assets server package.json pnpm-lock.yaml pnpm-workspace.yaml scripts/download-cloudflared.mjs
       - uses: actions/setup-node@v4
         with:
           node-version: 24.19.0
@@ -29,21 +39,23 @@ jobs:
           npm install --global pnpm@11.25.0
           pnpm install --frozen-lockfile
       - run: pnpm test
-      - name: Download verified Cloudflare helpers
-        run: node scripts/download-cloudflared.mjs
-      - name: Build and verify both architectures
+      - run: node scripts/download-cloudflared.mjs
+      - name: Build portable apps
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        run: pnpm build:mac
-      - name: Verify distribution ZIPs and launch native app
+        run: ${{ matrix.command }}
+      - name: Verify extracted Mac packages and native launch
+        if: matrix.platform == 'macos'
         run: node scripts/verify-mac-release.mjs
       - uses: actions/upload-artifact@v4
         with:
-          name: macos-0.4.1
+          name: portable-${{ matrix.platform }}
           path: |
-            dist/SI-Remote-0.4.1-macOS-*.zip
-            dist/SHA256SUMS-macOS-0.4.1.txt
-            dist/macOS-build-0.4.1.json
+            dist/*.exe
+            dist/*.zip
+            dist/*.AppImage
+            dist/*.tar.gz
+            dist/macOS-build-*.json
           if-no-files-found: error
   publish:
     needs: build
@@ -51,13 +63,25 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
       - uses: actions/download-artifact@v4
         with:
-          name: macos-0.4.1
+          pattern: portable-*
+          merge-multiple: true
           path: release
-      - name: Add Mac downloads to existing public release
+      - name: Prepare release hashes and source
+        run: |
+          VERSION=$(node -p 'require("./package.json").version')
+          git archive --format=zip --output="release/SI-Remote-$VERSION-Source.zip" HEAD
+          node scripts/ci-release-metadata.mjs
+      - name: Publish public preview downloads
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: gh release upload v0.4.1 release/*
-
+        run: |
+          VERSION=$(node -p 'require("./package.json").version')
+          gh release create "v$VERSION" --target "$GITHUB_SHA" --title "ConnectForge v$VERSION — Resumable Updates" --prerelease --notes-file RELEASE-NOTES.md
+          gh release upload "v$VERSION" release/*

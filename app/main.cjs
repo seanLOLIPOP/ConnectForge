@@ -23,7 +23,7 @@ let win,tray,socket,token=null,user=null,devices=[],iceServers=[],relayAvailable
 let pointerInput,inputBounds=null;
 const cloudflare=createCloudflare({packaged:app.isPackaged,resourcesPath:process.resourcesPath});let serviceURL=config.server,iceReady=Promise.resolve();
 const clipboardHistory=createClipboardHistory({clipboard,storage:{available:secureStorage,encrypt:text=>safeStorage.encryptString(text),decrypt:data=>safeStorage.decryptString(data)},directory:dataDir,onLocal:b=>emit('clipboard-local',b),onChange:b=>emit('clipboard-history',b)});
-const updater=createUpdater({app,dialog,window:()=>win,request,publicKey:fs.readFileSync(path.join(assets,'update-public.pem')),root:portableRoot,dataDir,busy:()=>!!(hostSession||viewerSession||pendingHost),identity:()=>({'X-SI-Device':config.deviceId,'X-SI-Device-Key':config.identityKey})});
+const updater=createUpdater({app,dialog,window:()=>win,request,publicKey:fs.readFileSync(path.join(assets,'update-public.pem')),root:portableRoot,dataDir,onProgress:p=>{emit('update-progress',p);if(win&&!win.isDestroyed())win.setProgressBar(p.stage==='idle'?-1:p.stage==='verifying'?1:p.received/p.total);},busy:()=>!!(hostSession||viewerSession||pendingHost),identity:()=>({'X-SI-Device':config.deviceId,'X-SI-Device-Key':config.identityKey})});
 async function apiTransport(){if(config.server===defaults.url&&defaults.tunnelHostname){const port=await cloudflare.bridge(defaults.tunnelHostname);serviceURL='https://127.0.0.1:'+port;}return serviceURL;}
 async function prepareIce(b){const host=b.cloudflareRelayHost||((config.server===defaults.url)?defaults.relayTunnelHostname:null);let servers=b.iceServers||[];if(host){const port=await cloudflare.bridge(host);servers=servers.map(server=>{const urls=Array.isArray(server.urls)?server.urls:[server.urls];return urls.some(url=>url.startsWith('turn:'))?{...server,urls:[`turn:127.0.0.1:${port}?transport=tcp`]}:server;});}iceServers=servers;relayAvailable=b.relayAvailable===true;return servers;}
 function emit(type,data){if(win&&!win.isDestroyed()){const throttle=!(hostSession||viewerSession);if(win.webContents.backgroundThrottling!==throttle)win.webContents.setBackgroundThrottling(throttle);win.webContents.send('si:event',{type,...data});}}
@@ -134,3 +134,4 @@ if(!app.requestSingleInstanceLock())app.quit();else{
   app.on('before-quit',()=>{quitting=true;clearTimeout(reconnectTimer);clearInterval(heartbeat);endAll();socket?.close();cloudflare.stop();});
   app.on('window-all-closed',()=>{if(!config.unattended)app.quit();});
 }
+
