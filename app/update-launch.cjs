@@ -24,7 +24,9 @@ function linuxSandbox(directory,run){
  const helper=path.join(directory,'chrome-sandbox'),previous=path.join(path.dirname(process.execPath),'chrome-sandbox');
  const approved=file=>{try{const s=fs.statSync(file);return s.uid===0&&(s.mode&0o4777)===0o4755;}catch{return false;}};
  if(approved(helper))return;
- if(approved(previous)&&fs.existsSync(helper)&&crypto.createHash('sha256').update(fs.readFileSync(previous)).digest('hex')===crypto.createHash('sha256').update(fs.readFileSync(helper)).digest('hex')){process.env.CHROME_DEVEL_SANDBOX=previous;return;}
+ for(const candidate of [previous,process.env.CHROME_DEVEL_SANDBOX]){
+  if(candidate&&approved(candidate)&&fs.existsSync(helper)&&crypto.createHash('sha256').update(fs.readFileSync(candidate)).digest('hex')===crypto.createHash('sha256').update(fs.readFileSync(helper)).digest('hex')){process.env.CHROME_DEVEL_SANDBOX=candidate;return;}
+ }
  try{run('/usr/bin/unshare',['--user','--map-root-user','/usr/bin/true'],{timeout:10000,stdio:'pipe'});}catch{throw Error('The update was extracted without FUSE, but Chromium sandbox setup requires an administrator on this Linux system. The current app will stay open. Prepare the sandbox in '+directory+' before opening that extracted app, or use the tar.gz download. The sandbox has not been disabled.');}
 }
 function relaunch(app,target,platform,root){
