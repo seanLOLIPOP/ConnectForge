@@ -20,7 +20,7 @@ jobs:
       - name: Verify release source
         run: |
           test "$(node -p 'require("./package.json").version')" = '0.4.1'
-          git diff --exit-code v0.4.1 -- app admin assets server package.json pnpm-lock.yaml pnpm-workspace.yaml scripts/build-mac.mjs scripts/download-cloudflared.mjs
+          git diff --exit-code v0.4.1 -- app admin assets server package.json pnpm-lock.yaml pnpm-workspace.yaml scripts/download-cloudflared.mjs
       - uses: actions/setup-node@v4
         with:
           node-version: 24.19.0

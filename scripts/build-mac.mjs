@@ -9,7 +9,7 @@ function run(command,args){const result=spawnSync(command,args,{cwd:root,stdio:'
 // Ad-hoc signing fixes bundle integrity for local testing. Public distribution
 // still requires a Developer ID identity and Apple notarization credentials.
 const identity=process.env.SI_REMOTE_MAC_IDENTITY||'-';
-run(process.execPath,[path.join(root,'node_modules/electron-builder/cli.js'),'--mac','zip','--x64','--arm64',`--config.mac.identity=${identity}`]);
+run(process.execPath,[path.join(root,'node_modules/electron-builder/cli.js'),'--mac','zip','--x64','--arm64','--publish','never',`--config.mac.identity=${identity}`]);
 for(const folder of ['mac','mac-arm64']){
   const app=path.join(root,'dist',folder,'SI Remote.app');
   if(!fs.existsSync(app))throw Error('Missing Mac app: '+app);
@@ -20,3 +20,4 @@ for(const folder of ['mac','mac-arm64']){
   run('/usr/bin/codesign',['--verify','--strict','--verbose=2',path.join(app,'Contents/Resources/cloudflared/cloudflared')]);
 }
 console.log(identity==='-'?'Verified ad-hoc signed portable Mac apps. These are not notarized public-distribution builds.':'Verified signed portable Mac apps. Confirm notarization before public distribution.');
+
