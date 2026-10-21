@@ -40,6 +40,8 @@ jobs:
           pnpm install --frozen-lockfile
       - run: pnpm test
       - run: node scripts/download-cloudflared.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
       - name: Build portable apps
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
