@@ -77,8 +77,8 @@ export function createService({identity,database=':memory:',tls,turnSecret='',tu
     let peer,alive=true,processing=false;const deadline=setTimeout(()=>{if(!peer)ws.close(1008,'Authentication required');},5000);
     ws.on('pong',()=>{alive=true;});const ping=setInterval(()=>{if(!alive)return ws.terminate();alive=false;ws.ping();},25000);
     ws.on('message',async raw=>{
-      try{
-        const b=JSON.parse(raw.toString());if(!b||typeof b!=='object')fail('Invalid message');
+      let b;try{
+        b=JSON.parse(raw.toString());if(!b||typeof b!=='object')fail('Invalid message');
         if(!peer){
           if(processing)fail('Authentication pending');processing=true;
           if(b.type!=='auth')fail('Authentication required',401);rate('ws:'+req.socket.remoteAddress,100);
@@ -95,9 +95,10 @@ export function createService({identity,database=':memory:',tls,turnSecret='',tu
         if(b.type==='connect'){
           const host=peers.get(b.device),d=db.prepare('SELECT * FROM devices WHERE id=? AND user_id=?').get(b.device,peer.user);
           if(!host||!d)fail('That computer is offline',404);if(host.id===peer.id)fail('Choose a different computer');
-          if([...calls.values()].some(c=>[c.host,c.viewer].includes(host.id)||[c.host,c.viewer].includes(peer.id)))fail('A computer is already in a session',409);
-          const id=randomUUID();calls.set(id,{host:host.id,viewer:peer.id,user:peer.user,at:clock(),accepted:false});
-          send(host.ws,{type:'incoming',session:id,viewer:peer.id,viewerName:db.prepare('SELECT name FROM devices WHERE id=?').get(peer.id).name});send(ws,{type:'connecting',session:id,device:host.id});audit(peer.user,'session-requested',host.id);return;
+          const existing=[...calls.values()],outgoing=existing.filter(c=>c.viewer===peer.id);
+          if(existing.some(c=>[c.host,c.viewer].includes(host.id)||c.host===peer.id)||outgoing.length>=8||outgoing.length&&(!b.workspace||outgoing.some(c=>!c.workspace)))fail('A computer is already in a session, or the workspace limit of 8 was reached',409);
+          const id=randomUUID();calls.set(id,{host:host.id,viewer:peer.id,user:peer.user,at:clock(),accepted:false,workspace:b.workspace===true});
+          send(host.ws,{type:'incoming',session:id,viewer:peer.id,viewerName:db.prepare('SELECT name FROM devices WHERE id=?').get(peer.id).name});send(ws,{type:'connecting',session:id,device:host.id,workspace:b.workspace===true});audit(peer.user,'session-requested',host.id);return;
         }
         const c=calls.get(b.session);if(!c||c.user!==peer.user||![c.host,c.viewer].includes(peer.id))fail('Session not authorized',403);
         const other=peers.get(c.host===peer.id?c.viewer:c.host);
@@ -112,7 +113,7 @@ export function createService({identity,database=':memory:',tls,turnSecret='',tu
           send(other?.ws,{type:'signal',session:b.session,payload});return;
         }
         fail('Unknown message');
-      }catch(e){send(ws,{type:'error',message:e.status?e.message:'Connection service unavailable'});if(e.status===401)ws.close(1008,'Sign in again');}
+      }catch(e){send(ws,{type:'error',device:b?.device,session:b?.session,message:e.status?e.message:'Connection service unavailable'});if(e.status===401)ws.close(1008,'Sign in again');}
     });
     ws.on('error',()=>{});ws.on('close',()=>{clearTimeout(deadline);clearInterval(ping);if(peer&&peers.get(peer.id)===peer){peers.delete(peer.id);for(const [id,c]of calls)if([c.host,c.viewer].includes(peer.id))endCall(id,'Computer disconnected');broadcast(peer.user);}});
   });

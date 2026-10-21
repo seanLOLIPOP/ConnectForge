@@ -7,6 +7,7 @@ const {createClipboardHistory}=require('./clipboard.cjs');
 const {createUpdater}=require('./updater.cjs');
 const {createPointerReceiver}=require('./latency.js');
 const {createFileAccess}=require('./files.cjs');
+const {createWorkspaceClipboard}=require('./workspace-clipboard.cjs');
 const assets=path.join(__dirname,'..','assets'),defaults=JSON.parse(fs.readFileSync(path.join(assets,'server.json'),'utf8'));
 const launchPath=name=>{const value=process.argv.find(a=>a.startsWith('--'+name+'='))?.slice(name.length+3);return value&&path.isAbsolute(value)?value:undefined;};
 const portableRoot=launchPath('si-remote-profile')||process.env.SI_REMOTE_PROFILE||process.env.PORTABLE_EXECUTABLE_DIR||(process.env.APPIMAGE?path.dirname(process.env.APPIMAGE):app.isPackaged?(process.platform==='darwin'?path.resolve(process.execPath,'../../../..'):path.dirname(process.execPath)):path.join(__dirname,'..'));
@@ -23,14 +24,16 @@ if(!app.isPackaged&&process.env.SI_REMOTE_TEST_SERVER)config.server=process.env.
 const save=()=>{fs.writeFileSync(configFile,JSON.stringify(config,null,2),{mode:0o600});};save();
 const caFile=path.join(assets,'server-ca.pem'),ca=fs.existsSync(caFile)?fs.readFileSync(caFile):undefined;
 let win,tray,socket,token=null,user=null,devices=[],iceServers=[],relayAvailable=false,input,hostSession=null,viewerSession=null,pendingHost=null,selectedSource=null,heartbeat,reconnectTimer,quitting=false;
+const viewers=new Map();
 let pointerInput,inputBounds=null;
-const fileAccess=createFileAccess({active:id=>!!user&&!!id&&[hostSession,viewerSession].includes(id)});
+const fileAccess=createFileAccess({active:id=>!!user&&!!id&&(id===hostSession||viewers.has(id)||id==='workspace-local'&&viewers.size>0)});
+const workspaceClipboard=createWorkspaceClipboard({clipboard,nativeImage,storage:{available:secureStorage,encrypt:s=>safeStorage.encryptString(s),decrypt:b=>safeStorage.decryptString(b)},directory:dataDir,onChange:b=>{if(b.session===hostSession)emit('workspace-clipboard',b);}});
 const cloudflare=createCloudflare({packaged:app.isPackaged,resourcesPath:process.resourcesPath});let serviceURL=config.server,iceReady=Promise.resolve();
 const clipboardHistory=createClipboardHistory({clipboard,storage:{available:secureStorage,encrypt:text=>safeStorage.encryptString(text),decrypt:data=>safeStorage.decryptString(data)},directory:dataDir,onLocal:b=>emit('clipboard-local',b),onChange:b=>emit('clipboard-history',b)});
-const updater=createUpdater({app,dialog,window:()=>win,request,publicKey:fs.readFileSync(path.join(assets,'update-public.pem')),root:portableRoot,dataDir,onProgress:p=>{emit('update-progress',p);if(win&&!win.isDestroyed())win.setProgressBar(p.stage==='idle'?-1:p.stage==='verifying'?1:p.received/p.total);},busy:()=>!!(hostSession||viewerSession||pendingHost),identity:()=>({'X-SI-Device':config.deviceId,'X-SI-Device-Key':config.identityKey})});
+const updater=createUpdater({app,dialog,window:()=>win,request,publicKey:fs.readFileSync(path.join(assets,'update-public.pem')),root:portableRoot,dataDir,onProgress:p=>{emit('update-progress',p);if(win&&!win.isDestroyed())win.setProgressBar(p.stage==='idle'?-1:p.stage==='verifying'?1:p.received/p.total);},busy:()=>!!(hostSession||viewers.size||pendingHost),identity:()=>({'X-SI-Device':config.deviceId,'X-SI-Device-Key':config.identityKey})});
 async function apiTransport(){if(config.server===defaults.url&&defaults.tunnelHostname){const port=await cloudflare.bridge(defaults.tunnelHostname);serviceURL='https://127.0.0.1:'+port;}return serviceURL;}
 async function prepareIce(b){const host=b.cloudflareRelayHost||((config.server===defaults.url)?defaults.relayTunnelHostname:null);let servers=b.iceServers||[];if(host){const port=await cloudflare.bridge(host);servers=servers.map(server=>{const urls=Array.isArray(server.urls)?server.urls:[server.urls];return urls.some(url=>url.startsWith('turn:'))?{...server,urls:[`turn:127.0.0.1:${port}?transport=tcp`]}:server;});}iceServers=servers;relayAvailable=b.relayAvailable===true;return servers;}
-function emit(type,data){if(win&&!win.isDestroyed()){const throttle=!(hostSession||viewerSession);if(win.webContents.backgroundThrottling!==throttle)win.webContents.setBackgroundThrottling(throttle);win.webContents.send('si:event',{type,...data});}}
+function emit(type,data){if(win&&!win.isDestroyed()){const throttle=!(hostSession||viewers.size);if(win.webContents.backgroundThrottling!==throttle)win.webContents.setBackgroundThrottling(throttle);win.webContents.send('si:event',{type,...data});}}
 function secureStorage(){return safeStorage.isEncryptionAvailable()&&!(process.platform==='linux'&&safeStorage.getSelectedStorageBackend()==='basic_text');}
 function tlsOptions(){return {ca:ca?[...require('node:tls').rootCertificates,ca]:undefined,minVersion:'TLSv1.2'};}
 async function request(endpoint,method='GET',body,extraHeaders={}){
@@ -43,8 +46,8 @@ async function request(endpoint,method='GET',body,extraHeaders={}){
   });
 }
 function send(b){if(socket?.readyState!==WebSocket.OPEN)throw Error('Connection service is offline');socket.send(JSON.stringify(b));}
-function stopHost(){fileAccess.end(hostSession).catch(()=>{});clipboardHistory.setSession(null);input?.release();pointerInput?.reset();inputBounds=null;hostSession=null;selectedSource=null;emit('stop-host',{});updateTray();}
-function endAll(){fileAccess.end(viewerSession).catch(()=>{});if(hostSession)try{send({type:'end',session:hostSession});}catch{}if(viewerSession)try{send({type:'end',session:viewerSession});}catch{}stopHost();viewerSession=null;emit('stop-viewer',{});}
+function stopHost(){workspaceClipboard.end(hostSession);fileAccess.end(hostSession).catch(()=>{});clipboardHistory.setSession(null);input?.release();pointerInput?.reset();inputBounds=null;hostSession=null;selectedSource=null;emit('stop-host',{});updateTray();}
+function endAll(){for(const id of viewers.keys()){fileAccess.end(id).catch(()=>{});workspaceClipboard.end(id);try{send({type:'end',session:id});}catch{}}viewers.clear();fileAccess.end('workspace-local').catch(()=>{});workspaceClipboard.end('workspace-local');fileAccess.end(viewerSession).catch(()=>{});if(hostSession)try{send({type:'end',session:hostSession});}catch{}if(viewerSession)try{send({type:'end',session:viewerSession});}catch{}stopHost();viewerSession=null;emit('stop-viewer',{});}
 function updateTray(){
   if(!tray)return;tray.setToolTip(hostSession?'SI Remote · Desktop is being controlled':'SI Remote · '+(user?'Signed in':'Signed out'));
   tray.setContextMenu(Menu.buildFromTemplate([{label:hostSession?'Desktop sharing active — open controls':'Open SI Remote',click:()=>{win.show();win.focus();}},{label:config.unattended?'Disable unattended access':'Unattended access is off',enabled:config.unattended,click:async()=>{config.unattended=false;save();endAll();await register().catch(()=>{});emit('state',state());}},{label:'Disconnect all sessions',click:endAll},{type:'separator'},{label:'Quit SI Remote',click:()=>{quitting=true;app.quit();}}]));
@@ -55,7 +58,7 @@ async function acceptHost(id){
   if(updater.isInstalling())throw Error('The app is restarting for an update');
   await iceReady;
   if(!id||pendingHost!==id)throw Error('This connection request is no longer valid');
-  if(hostSession||viewerSession)throw Error('Finish the current session first');
+  if(hostSession||viewers.size)throw Error('Finish the current session first');
   if(process.platform==='darwin'&&!systemPreferences.isTrustedAccessibilityClient(true))throw Error('Enable SI Remote in System Settings → Privacy & Security → Accessibility');
   const sources=await desktopCapturer.getSources({types:['screen'],thumbnailSize:{width:1,height:1}});if(!sources.length)throw Error('Screen capture permission is required');
   selectedSource=sources.find(s=>s.display_id===config.displayId)||sources[0];inputBounds=null;pointerInput?.reset();hostSession=id;pendingHost=null;
@@ -73,35 +76,40 @@ function connectSocket(){
       pendingHost=b.session;
       if(config.unattended)acceptHost(b.session).catch(e=>{emit('error',{message:e.message});try{send({type:'end',session:b.session});}catch{}});
       else{win.show();emit('incoming',b);}
-    }else if(b.type==='connecting'){if(updater.isInstalling()){send({type:'end',session:b.session});return;}viewerSession=b.session;emit('connecting',b);}
-    else if(b.type==='ended'){fileAccess.end(b.session).catch(()=>{});clipboardHistory.setSession(null);if(pendingHost===b.session)pendingHost=null;if(hostSession===b.session)stopHost();if(viewerSession===b.session)viewerSession=null;emit('ended',b);}
-    else if(b.type==='signal'){if(b.session===hostSession||b.session===viewerSession)emit('signal',b);}
-    else if(b.type==='accepted'){if(b.session===viewerSession){await prepareIce(b);emit('accepted',{...b,iceServers});}}
-    else if(b.type==='error')emit('error',{message:b.message});
+    }else if(b.type==='connecting'){if(updater.isInstalling()){send({type:'end',session:b.session});return;}viewers.set(b.session,{device:b.device,workspace:b.workspace===true});if(!b.workspace)viewerSession=b.session;emit('connecting',b);}
+    else if(b.type==='ended'){viewers.delete(b.session);workspaceClipboard.end(b.session);if(!viewers.size){fileAccess.end('workspace-local').catch(()=>{});workspaceClipboard.end('workspace-local');}fileAccess.end(b.session).catch(()=>{});clipboardHistory.setSession(null);if(pendingHost===b.session)pendingHost=null;if(hostSession===b.session)stopHost();if(viewerSession===b.session)viewerSession=null;emit('ended',b);}
+    else if(b.type==='signal'){if(b.session===hostSession||viewers.has(b.session))emit('signal',b);}
+    else if(b.type==='accepted'){if(viewers.has(b.session)){await prepareIce(b);emit('accepted',{...b,iceServers});}}
+    else if(b.type==='error')emit('error',b);
   }catch(e){emit('error',{message:e.message||'Could not process connection message'});}});
-  socket.on('error',e=>emit('error',{message:e.message}));socket.on('close',(code,reason)=>{clearInterval(heartbeat);endAll();emit('state',state());if(!quitting&&token){if(code===1008||String(reason)==='Device removed'){token=null;user=null;clipboardHistory.setOwner(null);fs.rmSync(tokenFile,{force:true});emit('state',state());}else reconnectTimer=setTimeout(async()=>{try{await request('/api/me');await register();connectSocket();}catch(e){emit('error',{message:e.message});}},5000);}});
+  socket.on('error',e=>emit('error',{message:e.message}));socket.on('close',(code,reason)=>{clearInterval(heartbeat);endAll();emit('state',state());if(!quitting&&token){if(code===1008||String(reason)==='Device removed'){token=null;user=null;workspaceClipboard.setOwner(null);clipboardHistory.setOwner(null);fs.rmSync(tokenFile,{force:true});emit('state',state());}else reconnectTimer=setTimeout(async()=>{try{await request('/api/me');await register();connectSocket();}catch(e){emit('error',{message:e.message});}},5000);}});
 }
 const trusted=event=>win&&!win.isDestroyed()&&event.sender===win.webContents&&event.senderFrame===win.webContents.mainFrame;
 function handle(name,fn){ipcMain.handle('si:'+name,async(event,...args)=>{if(!trusted(event))throw Error('Untrusted window');try{return {ok:true,value:await fn(...args)};}catch(e){return {ok:false,error:e.message};}});}
 handle('fullscreen',enabled=>{if(typeof enabled!=='boolean')throw Error('Invalid fullscreen state');win.setFullScreen(enabled);return enabled;});
-handle('files',b=>fileAccess.call(b?.session,b?.request));
+function peerData(id,request){if(!user||!id||!(id===hostSession||viewers.has(id)||id==='workspace-local'&&viewers.size))throw Error('Session is not active');return request?.op?.startsWith('clipboard-')?workspaceClipboard.call(id,request):fileAccess.call(id,request);}
+handle('files',b=>peerData(b?.session,b?.request));
+handle('workspace-files',request=>peerData('workspace-local',request));
+handle('workspace-history',()=>{if(!user)throw Error('Sign in first');return workspaceClipboard.history();});
+handle('workspace-copy',id=>{if(!user)throw Error('Sign in first');return workspaceClipboard.copy(id);});
+handle('workspace-clear',()=>{if(!user)throw Error('Sign in first');return workspaceClipboard.clear();});
 handle('files-end',id=>fileAccess.end(id));
 handle('state',()=>state());
 handle('updates',async()=>{if(!user)throw Error('Sign in to check update offers');await updater.check(true);});
 handle('login',async({email,password,remember})=>{
   if(user)throw Error('Sign out before switching accounts');const result=await request('/api/login','POST',{email,password});token=result.token;user=result.user;
-  try{if(config.ownerId&&config.ownerId!==user.id){config.deviceId=crypto.randomUUID();config.identityKey=crypto.randomBytes(32).toString('hex');config.unattended=false;}await register();config.ownerId=user.id;save();clipboardHistory.setOwner(user.id);if(remember&&secureStorage())fs.writeFileSync(tokenFile,safeStorage.encryptString(token),{mode:0o600});else fs.rmSync(tokenFile,{force:true});connectSocket();return state();}catch(e){token=null;user=null;throw e;}
+  try{if(config.ownerId&&config.ownerId!==user.id){config.deviceId=crypto.randomUUID();config.identityKey=crypto.randomBytes(32).toString('hex');config.unattended=false;}await register();config.ownerId=user.id;save();workspaceClipboard.setOwner(user.id);clipboardHistory.setOwner(user.id);if(remember&&secureStorage())fs.writeFileSync(tokenFile,safeStorage.encryptString(token),{mode:0o600});else fs.rmSync(tokenFile,{force:true});connectSocket();return state();}catch(e){token=null;user=null;throw e;}
 });
-handle('logout',async()=>{endAll();clearTimeout(reconnectTimer);try{await request('/api/logout','POST',{});}finally{token=null;user=null;clipboardHistory.setOwner(null);devices=[];socket?.close();fs.rmSync(tokenFile,{force:true});config.unattended=false;save();updateTray();}return state();});
+handle('logout',async()=>{endAll();clearTimeout(reconnectTimer);try{await request('/api/logout','POST',{});}finally{token=null;user=null;workspaceClipboard.setOwner(null);clipboardHistory.setOwner(null);devices=[];socket?.close();fs.rmSync(tokenFile,{force:true});config.unattended=false;save();updateTray();}return state();});
 handle('settings',async b=>{
   if(typeof b.name!=='string'||b.name.trim().length<1||b.name.length>80)throw Error('Name must be 1–80 characters');
   if(b.unattended===true&&(!user||!input.status().available))throw Error(input.status().error||'Sign in before enabling unattended access');
   config.name=b.name.trim();config.unattended=b.unattended===true;save();if(!config.unattended&&hostSession)endAll();await register();updateTray();return state();
 });
-handle('connect',id=>{if(updater.isInstalling())throw Error('The app is restarting for an update');if(typeof id!=='string'||!devices.some(d=>d.id===id&&d.id!==config.deviceId&&d.online))throw Error('Choose an online computer');send({type:'connect',device:id});});
+handle('connect',value=>{const id=typeof value==='string'?value:value?.device,workspace=value?.workspace===true;if(updater.isInstalling())throw Error('The app is restarting for an update');if(typeof id!=='string'||!devices.some(d=>d.id===id&&d.id!==config.deviceId&&d.online))throw Error('Choose an online computer');if(hostSession||viewers.size&&(!workspace||[...viewers.values()].some(v=>!v.workspace)))throw Error('Finish the current session first');send({type:'connect',device:id,workspace});});
 handle('approve',id=>acceptHost(id));
-handle('signal',b=>{if(!b||![hostSession,viewerSession].filter(Boolean).includes(b.session))throw Error('Session is not active');send({type:'signal',session:b.session,payload:b.payload});});
-handle('end',id=>{if(id&&pendingHost===id){send({type:'end',session:id});pendingHost=null;}else if(!id||[hostSession,viewerSession].includes(id)){endAll();}});
+handle('signal',b=>{if(!b||!(b.session===hostSession||viewers.has(b.session)))throw Error('Session is not active');send({type:'signal',session:b.session,payload:b.payload});});
+handle('end',id=>{if(id&&pendingHost===id){send({type:'end',session:id});pendingHost=null;}else if(viewers.has(id)){send({type:'end',session:id});viewers.delete(id);fileAccess.end(id).catch(()=>{});workspaceClipboard.end(id);if(viewerSession===id)viewerSession=null;}else if(!id||id===hostSession){endAll();}});
 handle('remove',async id=>{if(typeof id!=='string'||!devices.some(d=>d.id===id))throw Error('Unknown computer');await request('/api/devices/'+encodeURIComponent(id),'DELETE');});
 function hostBounds(){if(inputBounds)return inputBounds;const display=screen.getAllDisplays().find(d=>String(d.id)===selectedSource?.display_id)||screen.getPrimaryDisplay();let bounds=display.bounds;if(process.platform==='win32'){const a=screen.dipToScreenPoint({x:bounds.x,y:bounds.y}),b=screen.dipToScreenPoint({x:bounds.x+bounds.width-1,y:bounds.y+bounds.height-1});bounds={x:a.x,y:a.y,width:b.x-a.x+1,height:b.y-a.y+1};}return inputBounds=bounds;}
 handle('input',({session:id,event})=>{if(!hostSession||id!==hostSession)return false;pointerInput.apply(event,hostBounds());if(!app.isPackaged&&process.env.SI_REMOTE_E2E&&event?.kind==='key')fs.appendFileSync(process.env.SI_REMOTE_E2E+'.input',JSON.stringify({kind:event.kind,code:event.code,down:event.down})+'\n');return true;});
@@ -136,7 +144,7 @@ if(!app.requestSingleInstanceLock())app.quit();else{
     await win.loadFile(path.join(__dirname,'index.html'));
     if(await updater.startup())return;
     if(!app.isPackaged&&process.env.SI_REMOTE_E2E)require('../test/electron-harness.cjs')({win,app,fs,screen});
-    if(secureStorage()&&fs.existsSync(tokenFile))try{token=safeStorage.decryptString(fs.readFileSync(tokenFile));user=(await request('/api/me')).user;clipboardHistory.setOwner(user.id);await register();connectSocket();emit('state',state());}catch(e){token=null;user=null;fs.rmSync(tokenFile,{force:true});emit('error',{message:'Sign in again: '+e.message});}
+    if(secureStorage()&&fs.existsSync(tokenFile))try{token=safeStorage.decryptString(fs.readFileSync(tokenFile));user=(await request('/api/me')).user;workspaceClipboard.setOwner(user.id);clipboardHistory.setOwner(user.id);await register();connectSocket();emit('state',state());}catch(e){token=null;user=null;fs.rmSync(tokenFile,{force:true});emit('error',{message:'Sign in again: '+e.message});}
     if(process.env.SI_REMOTE_SMOKE){setTimeout(async()=>{try{await win.capturePage().then(img=>fs.writeFileSync(process.env.SI_REMOTE_SMOKE,img.toPNG()));fs.writeFileSync(process.env.SI_REMOTE_SMOKE+'.json',JSON.stringify(state(),null,2));quitting=true;app.quit();}catch(e){console.error(e);app.exit(1);}},2500);}
   });
   app.on('before-quit',()=>{quitting=true;clearTimeout(reconnectTimer);clearInterval(heartbeat);endAll();socket?.close();cloudflare.stop();});

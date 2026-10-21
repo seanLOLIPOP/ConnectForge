@@ -1,8 +1,20 @@
 # ConnectForge (SI Remote) — portable preview
 
-Download the [v0.4.12 portable preview](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.12) for Windows, Linux, Intel Mac and Apple Silicon Mac. The [portable admin app remains in v0.4.0](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.0). Mac ZIPs are built and verified on GitHub-hosted macOS. Install v0.4.4 manually once to use the new updater.
+Download the [v0.5.0 portable preview](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.5.0) for Windows, Linux, Intel Mac and Apple Silicon Mac. The [portable admin app remains in v0.4.0](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.0). Mac ZIPs are built and verified on GitHub-hosted macOS. Install v0.4.4 manually once to use the new updater.
 
 Built October 20, 2026. A working remote desktop preview with SI account login, owned-device discovery, approval or explicitly enabled unattended access, screen streaming, native keyboard/mouse control, direct encrypted WebRTC connections, and an authenticated TURN relay on the 5080 server.
+
+## Multi-PC workspace (v0.5.0)
+
+Open **Multi-PC workspace** in the sidebar and tick the computers to connect. Up to eight remote PCs can be viewed together, with approval required on each unless unattended access is enabled. Hover over a screen to control it; moving away releases held keys and buttons. Drag a view's heading or use its arrows to arrange views. Column count, view height and order are saved on this computer. Changing the arrangement preserves live connections. Views start at 720p / 2 Mbps; each view retains resolution and bitrate controls.
+
+Choose **Transfer files between PCs**, select the left and right computers (including This computer), then browse and copy files or folders. Remote-to-remote copies stream through the viewing app's memory over the two encrypted connections; the connection server does not store the files. Existing destination names receive a fresh numbered name. Finish or cancel a transfer before changing endpoints or disconnecting views. File contents, nested structure and empty folders are supported; Unix modes, ownership and ACLs are not preserved.
+
+Turn on **Share clipboard (text + images)** to share new copies among selected PCs and this computer. Existing clipboard contents are treated as a baseline, not broadcast on enabling. Text is limited to 16 KB, PNG images to 8 MB / 20 million pixels. Copy/paste shortcuts adapt the modifier for the target OS. Sharing uses encrypted peer data channels and stops when disabled or disconnected. Simultaneous changes use last observed copy. Clipboard history retains up to 30 items including up to three images, encrypted in the signed-in account's portable data folder when a secure OS store is available; otherwise history lasts for this run. Concealed clipboard markers are excluded. The host's sharing banner indicates when workspace clipboard is enabled.
+
+Update the viewer and all participating remote apps to **0.5.0** for the complete workspace and image clipboard feature. The connection service must also use this version's server code. Existing single-PC sessions and text clipboard history remain supported. SI Remote Admin stays at **0.4.0**, and accepts the signed 0.5.0 update manifest. Windows, Linux X11 and macOS 13+ Intel/Apple Silicon packages remain portable. Mac previews are ad-hoc signed and not notarized, so local macOS approval can still be required.
+
+Validation: 92 automated tests. A native Windows Electron fixture established two simultaneous real WebRTC sessions, copied a 1 MB binary file plus an empty folder from remote A to B, shared native text and PNG clipboard contents among all three endpoints, verified hover keyboard routing and release on switching views, and rearranged views without reconnecting. The existing native single-PC file-transfer check also passed. Multi-PC UI and clipboard behavior still need real Mac/Linux device verification.
 
 ## Scrollable Files page (v0.4.12)
 

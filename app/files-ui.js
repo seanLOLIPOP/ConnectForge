@@ -1,9 +1,9 @@
 'use strict';
-window.SIFileUI={create({api,session,toast}){
+window.SIFileUI={create({api,session,toast,endpoints}){
  const $=id=>document.getElementById(id),panes={local:{},remote:{}};let task=null,generation=0;
  const size=n=>n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':n<1073741824?(n/1048576).toFixed(1)+' MB':(n/1073741824).toFixed(2)+' GB';
- function endpoint(side){const s=session();if(!s?.filesRPC||s.fileChannel?.readyState!=='open')throw Error('Update both apps and wait for the file channel');return side==='local'?{call:(op,args)=>api.files({session:s.id,request:{op,args}})}:s.filesRPC;}
- function available(){const s=session(),ready=s?.filesRPC&&s.fileChannel?.readyState==='open';for(const id of ['files-viewer','files-host'])$(id).disabled=!ready;return ready;}
+ function endpoint(side){const custom=endpoints?.(side);if(custom)return custom;const s=session();if(!s?.filesRPC||s.fileChannel?.readyState!=='open')throw Error('Update both apps and wait for the file channel');return side==='local'?{call:(op,args)=>api.files({session:s.id,request:{op,args}})}:s.filesRPC;}
+ function available(){const s=session(),ready=endpoints?.('local')?true:s?.filesRPC&&s.fileChannel?.readyState==='open';for(const id of ['files-viewer','files-host'])$(id).disabled=!ready;return ready;}
  function controls(){const busy=!!task;for(const side of ['local','remote']){$(side+'-send').disabled=busy||!panes[side].selected||!panes[side==='local'?'remote':'local'].listing?.id;for(const action of ['up','refresh','locations'])$(side+'-'+action).disabled=busy;} $('files-cancel').disabled=!busy;}
  async function browse(side,id,roots=false){const version=generation,p=panes[side];p.selected=null;p.listing=null;controls();$(side+'-entries').replaceChildren();$(side+'-path').textContent='Loading…';try{const listing=await endpoint(side).call(roots?'roots':'list',{id});if(version!==generation)return;p.listing=listing;$(side+'-path').textContent=listing.path;$(side+'-entries').replaceChildren();
    for(const entry of listing.entries){const row=document.createElement('button');row.type='button';row.className='file-row';row.disabled=!entry.id;const name=document.createElement('span'),detail=document.createElement('span');name.textContent=(entry.kind==='directory'?'▣ ':entry.kind==='file'?'▤ ':'↗ ')+entry.name;detail.textContent=entry.kind==='file'?size(entry.size):entry.kind;row.append(name,detail);row.onclick=()=>{if(task)return;for(const b of $(side+'-entries').children)b.classList.remove('selected');row.classList.add('selected');p.selected=entry;controls();};row.ondblclick=()=>{if(!task&&entry.kind==='directory')browse(side,entry.id);};$(side+'-entries').append(row);}
@@ -23,8 +23,8 @@ window.SIFileUI={create({api,session,toast}){
  }
  for(const side of ['local','remote']){$(side+'-up').onclick=()=>browse(side,panes[side].listing?.parent, !panes[side].listing?.parent);$(side+'-refresh').onclick=()=>browse(side,panes[side].listing?.id,!panes[side].listing?.id);$(side+'-locations').onclick=()=>browse(side,null,true);$(side+'-send').onclick=()=>transfer(side).catch(e=>toast(e.message));}
  $('files-cancel').onclick=()=>{if(task){task.cancelled=true;$('files-status').textContent='Cancelling transfer…';}};
- $('files-back').onclick=()=>{$('files-page').hidden=true;};
+ $('files-back').onclick=()=>{$('files-page').hidden=true;window.SIWorkspace?.filesClosed();};
  async function open(){if(!available())return;$('files-page').hidden=false;if(!panes.local.listing&&!panes.remote.listing)await Promise.all(['local','remote'].map(side=>browse(side)));}
  for(const id of ['files-viewer','files-host'])$(id).onclick=()=>open().catch(e=>toast(e.message));
- return {available,reset(){generation++;if(task)task.cancelled=true;task=null;for(const p of Object.values(panes)){p.listing=null;p.selected=null;}$('files-page').hidden=true;$('files-status').textContent='No active transfer';$('files-progress').value=0;for(const side of ['local','remote'])$(side+'-entries').replaceChildren();available();controls();}};
+ return {available,open,busy:()=>!!task,reload:async()=>{if(task)throw Error('Finish the transfer before changing computers');generation++;for(const p of Object.values(panes)){p.listing=null;p.selected=null;}await Promise.all(['local','remote'].map(side=>browse(side)));},reset(){generation++;if(task)task.cancelled=true;task=null;for(const p of Object.values(panes)){p.listing=null;p.selected=null;}$('files-page').hidden=true;$('files-status').textContent='No active transfer';$('files-progress').value=0;for(const side of ['local','remote'])$(side+'-entries').replaceChildren();available();controls();}};
 }};

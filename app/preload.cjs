@@ -1,6 +1,7 @@
 const {contextBridge,ipcRenderer}=require('electron');
 const invoke=async(name,...args)=>{const result=await ipcRenderer.invoke('si:'+name,...args);if(!result.ok)throw Error(result.error);return result.value;};
 contextBridge.exposeInMainWorld('si',{
+  workspaceFiles:r=>invoke('workspace-files',r),workspaceHistory:()=>invoke('workspace-history'),workspaceCopy:id=>invoke('workspace-copy',id),workspaceClear:()=>invoke('workspace-clear'),
   files:b=>invoke('files',b),filesEnd:id=>invoke('files-end',id),
   fullscreen:enabled=>invoke('fullscreen',enabled),
   updates:()=>invoke('updates'),
