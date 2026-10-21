@@ -1,8 +1,18 @@
 # ConnectForge (SI Remote) — portable preview
 
-Download the [v0.4.2 portable preview](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.2) for Windows, Linux, Intel Mac and Apple Silicon Mac. The [portable admin app remains in v0.4.0](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.0). Mac ZIPs are built and verified on GitHub-hosted macOS. Install v0.4.2 manually once to use the improved downloader.
+Download the [v0.4.3 portable preview](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.3) for Windows, Linux, Intel Mac and Apple Silicon Mac. The [portable admin app remains in v0.4.0](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.0). Mac ZIPs are built and verified on GitHub-hosted macOS. Install v0.4.3 manually once to use the new updater.
 
 Built October 20, 2026. A working remote desktop preview with SI account login, owned-device discovery, approval or explicitly enabled unattended access, screen streaming, native keyboard/mouse control, direct encrypted WebRTC connections, and an authenticated TURN relay on the 5080 server.
+
+## Update restarting (v0.4.3)
+
+The updater schedules Electron's native relauncher instead of detached PowerShell/shell helpers. A real public Windows portable target reopened through the updater fixture, marked its receipt active, initialized native input and retained existing portable data. An interrupted `installing` state can be retried from **Check update offers**. Download and restart approval are still required; active remote sessions block updates.
+
+Without FUSE 2, Linux can extract the verified AppImage and launch its AppRun. Root-owned mode-4755 sandbox helpers are reused only when byte-identical to the new runtime; user namespaces are used where permitted. Ubuntu's sandbox restriction still requires administrator preparation on affected computers. A real AppImage extraction passed on the 5080, which then correctly reported its sandbox restriction before quitting. Full Linux update restart remains unverified.
+
+Mac updates check strict signatures and Gatekeeper approval before quitting. These ad-hoc preview builds are not Developer ID signed or notarized; macOS can still block them and automatic Mac restart remains unverified. Apple signing/notarization is required for normal unattended distribution. No sandbox, Gatekeeper or certificate protection is disabled.
+
+All 44 automated tests pass. The signed v0.4.3 manifest covers Windows x64, Linux x64 and both Mac architectures. Load `0.4.3` in SI Remote Admin to offer it. Install v0.4.3 manually once if the older updater cannot launch it; that older executable cannot use the replacement restart code until the new app is running. Preserve your SI Remote Data folder.
 
 ## Update downloads (v0.4.2)
 
@@ -26,7 +36,7 @@ v0.3.0 prefers H.264 to use the operating system’s hardware encoder and decode
 
 ## Run
 
-**Windows:** run `SI-Remote-0.4.2-Windows-Portable.exe`. No installer. Alternatively extract the Windows ZIP and run `SI Remote.exe` from that folder.
+**Windows:** run `SI-Remote-0.4.3-Windows-Portable.exe`. No installer. Alternatively extract the Windows ZIP and run `SI Remote.exe` from that folder.
 
 Windows builds are unsigned; macOS bundles are ad-hoc signed without Developer ID signing or notarization. These are public preview downloads; they are not signed public-store releases.
 
