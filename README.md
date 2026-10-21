@@ -8,7 +8,7 @@ Built October 20, 2026. A working remote desktop preview with SI account login, 
 
 The first mouse movement sends immediately; subsequent movements coalesce every 8 ms. The host keeps only the newest pending motion while native input is busy. Clicks, scrolling and keys keep reliable delivery and bypass pending motion. Video adapts frame rate, resolution and bitrate when send queues, encoder time or bandwidth limitation show pressure, then recovers gradually. Idle bandwidth estimates alone do not lower quality. The viewer shows actual resolution, and control RTT includes the host input bridge.
 
-All 54 automated tests pass locally. Live Windows tests cover direct and Cloudflare TURN video, native input, background capture and shared clipboard. A direct local session retained full 1728×1080 capture; hotspot and Mac performance remain unverified. Update both ends for the full improvement. SI Remote Admin remains v0.4.0; load the signed 0.4.5 release to offer the new app. Older updater limitations still apply to the executable currently installed.
+All 55 automated tests pass locally. Live Windows tests cover direct and Cloudflare TURN video, native input, background capture and shared clipboard. A direct local session retained full 1728×1080 capture; hotspot and Mac performance remain unverified. Update both ends for the full improvement. SI Remote Admin remains v0.4.0; load the signed 0.4.5 release to offer the new app. Older updater limitations still apply to the executable currently installed.
 
 ## Update restarting (v0.4.4)
 

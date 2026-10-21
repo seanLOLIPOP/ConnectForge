@@ -43,9 +43,9 @@
   };
  }
  function createInputForwarder({send,active=()=>true}){
-  let pending=null,inFlight=false,disposed=false;
+  let pending=null,inFlight=false,disposed=false,latest=-1;
   function flush(){if(disposed||!active()||inFlight||!pending)return;const event=pending;pending=null;inFlight=true;let result;try{result=send(event);}catch{}Promise.resolve(result).catch(()=>{}).finally(()=>{inFlight=false;flush();});}
-  return {forward(event){if(disposed||!active())return;if(event.kind==='move'&&sequence(event.seq)){pending=event;flush();return;}if(event.kind==='release'||(sequence(event.seq)&&pending&&pending.seq<=event.seq))pending=null;try{Promise.resolve(send(event)).catch(()=>{});}catch{}},dispose(){disposed=true;pending=null;}};
+  return {forward(event){if(disposed||!active())return;if(event.kind==='move'&&sequence(event.seq)){if(event.seq<=latest)return;latest=event.seq;pending=event;flush();return;}if(sequence(event.seq))latest=Math.max(latest,event.seq);if(event.kind==='release'||(sequence(event.seq)&&pending&&pending.seq<=event.seq))pending=null;try{Promise.resolve(send(event)).catch(()=>{});}catch{}},dispose(){disposed=true;pending=null;}};
  }
  const profiles=[{maxBitrate:6000000,maxFramerate:60,scaleResolutionDownBy:1},{maxBitrate:2500000,maxFramerate:30,scaleResolutionDownBy:1.5},{maxBitrate:1000000,maxFramerate:24,scaleResolutionDownBy:2},{maxBitrate:450000,maxFramerate:15,scaleResolutionDownBy:3}];
  function createVideoController({relay=false}={}){
