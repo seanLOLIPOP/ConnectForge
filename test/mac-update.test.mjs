@@ -20,5 +20,16 @@ test('an invalid extracted Mac signature is rejected before quarantine or stagin
  assert.equal(s.calls.some(c=>c.command.endsWith('xattr')),false);
 });
 test('Mac approval help opens only the user-selected Finder or Settings action',async()=>{
- for(const response of [0,1,2]){const actions=[];await mac.showMacApproval({showMessageBox:async(_,options)=>{assert.equal(options.cancelId,2);assert.match(options.detail,/Admin cannot approve/);return {response};}},undefined,'/download/SI Remote.app',{showItemInFolder:p=>actions.push(p),openExternal:async p=>actions.push(p)});assert.deepEqual(actions,response===0?['/download/SI Remote.app']:response===1?['x-apple.systempreferences:com.apple.preference.security']:[]);}
+ for(const response of [0,1,2]){const actions=[];await mac.showMacApproval({showMessageBox:async(_,options)=>{assert.equal(options.cancelId,2);assert.match(options.detail,/Admin cannot approve/);assert.match(options.detail,/may not appear until/);return {response};}},undefined,'/download/SI Remote.app',{showItemInFolder:p=>actions.push(p),openPath:async p=>{actions.push(p);return '';}});assert.deepEqual(actions,response===0?['/download/SI Remote.app']:response===1?['/System/Applications/System Settings.app']:[]);}
+});
+test('Mac approval guide restores a hidden or minimized app before showing its dialog',async()=>{
+ const calls=[],window={isDestroyed:()=>false,isMinimized:()=>true,restore:()=>calls.push('restore'),show:()=>calls.push('show'),focus:()=>calls.push('focus')};
+ await mac.showMacApproval({showMessageBox:async owner=>{assert.equal(owner,window);calls.push('dialog');return {response:2};}},window,'/download/app',{});
+ assert.deepEqual(calls,['restore','show','focus','dialog']);
+});
+test('Settings launch errors show manual instructions instead of silently disappearing',async()=>{
+ for(const reject of [false,true]){const dialogs=[];
+ await mac.showMacApproval({showMessageBox:async(_,options)=>{dialogs.push(options);return {response:1};}},undefined,'/download/app',{openPath:async()=>{if(reject)throw Error('Launch failed');return 'Launch failed';}});
+ assert.equal(dialogs.length,2);assert.equal(dialogs[1].type,'error');assert.match(dialogs[1].detail,/Apple menu/);assert.match(dialogs[1].detail,/Launch failed/);
+ }
 });
