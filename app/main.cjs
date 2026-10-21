@@ -7,8 +7,10 @@ const {createClipboardHistory}=require('./clipboard.cjs');
 const {createUpdater}=require('./updater.cjs');
 const {createPointerReceiver}=require('./latency.js');
 const assets=path.join(__dirname,'..','assets'),defaults=JSON.parse(fs.readFileSync(path.join(assets,'server.json'),'utf8'));
-const portableRoot=process.env.SI_REMOTE_PROFILE||process.env.PORTABLE_EXECUTABLE_DIR||(process.env.APPIMAGE?path.dirname(process.env.APPIMAGE):app.isPackaged?(process.platform==='darwin'?path.resolve(process.execPath,'../../../..'):path.dirname(process.execPath)):path.join(__dirname,'..'));
-let portable=true,dataDir=path.join(portableRoot,'SI Remote Data');
+const launchPath=name=>{const value=process.argv.find(a=>a.startsWith('--'+name+'='))?.slice(name.length+3);return value&&path.isAbsolute(value)?value:undefined;};
+const portableRoot=launchPath('si-remote-profile')||process.env.SI_REMOTE_PROFILE||process.env.PORTABLE_EXECUTABLE_DIR||(process.env.APPIMAGE?path.dirname(process.env.APPIMAGE):app.isPackaged?(process.platform==='darwin'?path.resolve(process.execPath,'../../../..'):path.dirname(process.execPath)):path.join(__dirname,'..'));
+let portable=true,dataDir=launchPath('si-remote-data-dir')||process.env.SI_REMOTE_DATA_DIR||path.join(portableRoot,'SI Remote Data');
+portable=path.resolve(dataDir)===path.resolve(portableRoot,'SI Remote Data');
 try{fs.mkdirSync(dataDir,{recursive:true,mode:0o700});fs.accessSync(dataDir,fs.constants.W_OK);}catch{portable=false;dataDir=path.join(app.getPath('appData'),'SI Remote');fs.mkdirSync(dataDir,{recursive:true,mode:0o700});}
 app.setPath('userData',dataDir);
 const configFile=path.join(dataDir,'settings.json'),tokenFile=path.join(dataDir,'session.enc');

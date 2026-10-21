@@ -53,6 +53,16 @@ test('client never quits when the user postpones restart and retains existing po
  fs.appendFileSync(path.join(root,tools.filename(r.manifest.version,process.platform,process.arch)),'tampered');assert.equal(await updater.matches(path.join(root,tools.filename(r.manifest.version,process.platform,process.arch)),asset),false);
 });
 test('busy clients cannot download or restart',async()=>{let quits=0;const instance=updater.createUpdater({app:{getVersion:()=> '0.4.0',quit:()=>quits++},dialog:{showMessageBox:async()=>({response:1})},window:()=>undefined,publicKey:keys.publicKey,root:os.tmpdir(),dataDir:os.tmpdir(),busy:()=>true,identity:()=>({}),request:async p=>{assert.equal(p,'/api/updates/current');return {job:{id:'test',state:'offered',envelope:release()}};}});await instance.check();assert.equal(quits,0);});
+test('fallback updates and startup redirection retain original profile and existing data',async t=>{
+ if(process.platform==='darwin')return;
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'si-fallback-update-'));t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
+ const root=path.join(directory,'unavailable-app-folder'),dataDir=path.join(directory,'profile'),storage=path.join(dataDir,'Updates');fs.mkdirSync(storage,{recursive:true});fs.writeFileSync(path.join(dataDir,'clipboard.enc'),'existing encrypted history');
+ const envelope=release(),file=path.join(storage,tools.filename('0.4.1',process.platform,process.arch));fs.writeFileSync(file,bytes);const launched=[],job={id:'fallback',state:'offered',envelope};
+ const options={app:{getVersion:()=> '0.4.0'},dialog:{showMessageBox:async()=>({response:0})},window:()=>undefined,publicKey:keys.publicKey,root,dataDir,busy:()=>false,identity:()=>({}),prepare:target=>target,launch:(...args)=>launched.push(args),request:async p=>p.endsWith('current')?{job}:{ok:true}};
+ await updater.createUpdater(options).check(true);assert.equal(launched.length,1);assert.deepEqual(launched[0].slice(1),[file,process.platform,root,dataDir]);
+ const receiptFile=path.join(dataDir,'update-last.json'),receipt=JSON.parse(fs.readFileSync(receiptFile));assert.equal(receipt.updateRoot,storage);receipt.active=true;fs.writeFileSync(receiptFile,JSON.stringify(receipt));
+ assert.equal(await updater.createUpdater(options).startup(),true);assert.equal(launched.length,2);assert.deepEqual(launched[1].slice(1),[file,process.platform,root,dataDir]);assert.equal(fs.readFileSync(path.join(dataDir,'clipboard.enc'),'utf8'),'existing encrypted history');assert.equal(fs.existsSync(root),false);
+});
 test('blocked launch preparation reports failure while the current app stays open',async t=>{
  if(process.platform==='darwin')return;
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'si-blocked-launch-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));const envelope=release(),states=[];fs.writeFileSync(path.join(root,tools.filename('0.4.1',process.platform,process.arch)),bytes);let quits=0;

@@ -85,5 +85,5 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           VERSION=$(node -p 'require("./package.json").version')
-          gh release create "v$VERSION" --target "$GITHUB_SHA" --title "ConnectForge v$VERSION — Mac Approval Guide" --prerelease --notes-file RELEASE-NOTES.md
+          gh release create "v$VERSION" --target "$GITHUB_SHA" --title "ConnectForge v$VERSION — Automatic Mac Settings and Writable Updates" --prerelease --notes-file RELEASE-NOTES.md
           gh release upload "v$VERSION" release/*

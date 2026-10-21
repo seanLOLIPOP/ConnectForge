@@ -8,6 +8,11 @@ test('native relaunch is scheduled before quitting and uses paths as data',()=>{
  for(const platform of ['win32','linux','darwin']){const calls=[],target=path.resolve('folder with spaces','new app');launcher.relaunch({relaunch:o=>calls.push(o),quit:()=>calls.push('quit')},target,platform);assert.equal(calls[1],'quit');assert.deepEqual(calls[0],platform==='darwin'?{execPath:'/usr/bin/open',args:['-n',target]}:{execPath:target,args:[]});}
 });
 test('a relaunch scheduling failure keeps the current app open',()=>{let quit=false;assert.throws(()=>launcher.relaunch({relaunch:()=>{throw Error('cannot schedule')},quit:()=>quit=true},'/app','linux'),/cannot schedule/);assert.equal(quit,false);});
+test('Mac relaunch explicitly passes the original profile and data paths through LaunchServices',()=>{
+ const profile=path.resolve('original folder'),data=path.resolve('profile data'),previous=process.env.SI_REMOTE_PROFILE,previousData=process.env.SI_REMOTE_DATA_DIR;let options;
+ try{launcher.relaunch({relaunch:o=>options=o,quit:()=>{}},'/updates/new.app','darwin',profile,data);assert.deepEqual(options.args,['-n','/updates/new.app','--args','--si-remote-profile='+profile,'--si-remote-data-dir='+data]);}
+ finally{if(previous===undefined)delete process.env.SI_REMOTE_PROFILE;else process.env.SI_REMOTE_PROFILE=previous;if(previousData===undefined)delete process.env.SI_REMOTE_DATA_DIR;else process.env.SI_REMOTE_DATA_DIR=previousData;}
+});
 test('missing target is rejected before quitting',()=>{
  assert.throws(()=>launcher.preflight('/missing','win32',{exists:()=>false}),/missing/);
  launcher.preflight('/new.exe','win32',{exists:()=>true});
@@ -20,4 +25,3 @@ test('Mac signature and Gatekeeper approval are required, without changing prote
  assert.equal(calls.length,2);assert.equal(calls[0].command,'/usr/bin/codesign');assert.equal(calls[1].command,'/usr/sbin/spctl');
  launcher.preflight('/new.app','darwin',{exists:()=>true,run:()=>''});
 });
-

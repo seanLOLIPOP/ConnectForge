@@ -35,11 +35,13 @@ function linuxSandbox(directory,run){
  }
  try{run('/usr/bin/unshare',['--user','--map-root-user','/usr/bin/true'],{timeout:10000,stdio:'pipe'});}catch{throw Error('The update was extracted without FUSE, but Chromium sandbox setup requires an administrator on this Linux system. The current app will stay open. Prepare the sandbox in '+directory+' before opening that extracted app, or use the tar.gz download. The sandbox has not been disabled.');}
 }
-function relaunch(app,target,platform,root){
+function relaunch(app,target,platform,root,dataDir){
  // Electron's native relauncher waits for this process to exit. Avoid detached
  // PowerShell/shell helpers whose launch errors were previously discarded.
  const options=platform==='darwin'?{execPath:'/usr/bin/open',args:['-n',target]}:{execPath:path.resolve(target),args:[]};
+ if(platform==='darwin'&&(root||dataDir)){options.args.push('--args');if(root)options.args.push('--si-remote-profile='+path.resolve(root));if(dataDir)options.args.push('--si-remote-data-dir='+path.resolve(dataDir));}
  if(root)process.env.SI_REMOTE_PROFILE=path.resolve(root);
+ if(dataDir)process.env.SI_REMOTE_DATA_DIR=path.resolve(dataDir);
  app.relaunch(options);
  app.quit();
 }

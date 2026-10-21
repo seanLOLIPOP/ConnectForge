@@ -29,13 +29,14 @@ for(const arch of ['x64','arm64']){
   if(run('/usr/libexec/PlistBuddy',['-c','Print :CFBundleShortVersionString',path.join(app,'Contents/Info.plist')]).trim()!==version)throw Error('Wrong app version');
   if(arch===process.arch){
     const screenshot=path.join(temp,'smoke.png');
-    run(executable,[],{env:{...process.env,SI_REMOTE_SMOKE:screenshot},timeout:30000});
+    const profile=path.join(temp,'original profile'),data=path.join(temp,'existing data');
+    run(executable,['--si-remote-profile='+profile,'--si-remote-data-dir='+data],{env:{...process.env,SI_REMOTE_SMOKE:screenshot},timeout:30000});
     if(fs.statSync(screenshot).size<1000)throw Error('Missing launch screenshot');
-    JSON.parse(fs.readFileSync(screenshot+'.json'));
+    if(JSON.parse(fs.readFileSync(screenshot+'.json')).dataDir!==data)throw Error('Explicit update data folder was not retained');
+    if(fs.existsSync(profile))throw Error('Launch unexpectedly wrote to the original app location');
   }
   assets.push({name,bytes:fs.statSync(zip).size,sha256:crypto.createHash('sha256').update(fs.readFileSync(zip)).digest('hex')});
 }
 fs.writeFileSync(path.join(root,'dist',`SHA256SUMS-macOS-${version}.txt`),assets.map(a=>`${a.sha256}  ${a.name}`).join('\n')+'\n');
 fs.writeFileSync(path.join(root,'dist',`macOS-build-${version}.json`),JSON.stringify({version,sourceCommit:process.env.GITHUB_SHA,run:process.env.GITHUB_RUN_ID,signing:'ad-hoc; not Apple notarized',checks:['ZIP extraction','strict bundle signatures','native input module signatures','Cloudflare helper signatures','executable architecture','bundle version',`native ${process.arch} app launch`],assets},null,2)+'\n');
 console.log('Verified Mac ZIPs:',assets);
-

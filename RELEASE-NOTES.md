@@ -1,11 +1,9 @@
-Improves the local Mac update approval guide. It now explains that you must first try opening the exact downloaded app in Finder before looking for Open Anyway. It names the Security section and explains that some macOS warnings may not offer approval.
+When a verified Mac update requires local approval, SI Remote now automatically opens Privacy & Security while displaying the approval guide. If that pane link fails, it opens System Settings instead. You still choose Open Anyway yourself if macOS offers it. The guide retains Finder access because macOS may require an attempt to open the exact downloaded app before displaying an approval entry.
 
-Open System Settings launches the System Settings app directly instead of relying on an older preference-pane link. Choose Privacy & Security in its sidebar. If the launch fails, the app shows manual instructions and the error. The approval guide also restores and focuses a hidden or minimized SI Remote window before displaying the dialog.
+Updates now test whether the app folder is writable. Read-only, denied or missing app folders use an Updates directory inside the current SI Remote data folder. Signed download verification, staging and startup redirection use that selected location. Restart explicitly retains the original profile and data folder; Mac LaunchServices receives these as app arguments. Existing account identity and clipboard data remain in the same data directory during the automatic restart.
 
-Install v0.4.9 once to receive this guide for subsequent updates. The currently installed app still handles the update into v0.4.9. Mac approval remains local and may still be required; these builds are ad-hoc signed and not Apple notarized. No Gatekeeper, signature, checksum or restart-approval check is disabled.
+Install v0.4.10 once to get these changes. The updater already installed still handles this first upgrade. If it fails with a read-only error, manually download the new app to a writable folder and preserve your existing data. Mac approval remains local; these preview builds are ad-hoc signed and not Apple notarized. Opening Settings does not grant approval or guarantee Open Anyway appears.
 
-Retains v0.4.8 fullscreen and stream resolution/bitrate controls. Update both viewer and host for those controls. SI Remote Admin remains v0.4.0.
+All 76 automated tests pass locally. Native Windows launch verified the explicit data-folder arguments. CI also checks those arguments during native Intel Mac launch. Mac Privacy & Security UI, Gatekeeper approval completion and Apple Silicon runtime still need real-device verification.
 
-All 70 automated tests pass locally, including selected-action routing, restoring the approval window, and both returned and thrown Settings-launch errors. Opening Settings and completing approval on a real Mac remain unverified.
-
-Load signed release 0.4.9 in Admin after its verified update manifest is attached. Users approve downloads and restarts; active sessions block updates.
+Retains fullscreen, resolution/bitrate controls and shared clipboard history. SI Remote Admin remains v0.4.0. Load signed release 0.4.10 after the verified update manifest is attached. Download and restart approval remain required, and active sessions block updates.

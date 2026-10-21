@@ -1,8 +1,16 @@
 # ConnectForge (SI Remote) — portable preview
 
-Download the [v0.4.9 portable preview](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.9) for Windows, Linux, Intel Mac and Apple Silicon Mac. The [portable admin app remains in v0.4.0](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.0). Mac ZIPs are built and verified on GitHub-hosted macOS. Install v0.4.4 manually once to use the new updater.
+Download the [v0.4.10 portable preview](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.10) for Windows, Linux, Intel Mac and Apple Silicon Mac. The [portable admin app remains in v0.4.0](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.0). Mac ZIPs are built and verified on GitHub-hosted macOS. Install v0.4.4 manually once to use the new updater.
 
 Built October 20, 2026. A working remote desktop preview with SI account login, owned-device discovery, approval or explicitly enabled unattended access, screen streaming, native keyboard/mouse control, direct encrypted WebRTC connections, and an authenticated TURN relay on the 5080 server.
+
+## Automatic Mac Settings and writable updates (v0.4.10)
+
+When a Mac update requires approval, Privacy & Security opens automatically alongside the local guide. It falls back to System Settings if the pane link fails. You still approve locally; try opening the exact download in Finder first if Open Anyway is missing.
+
+Read-only or denied app locations now use an Updates directory within the existing data folder. The restart keeps the original profile and data locations, and startup redirects to the verified cached update. Install v0.4.10 once to receive these changes; older updaters still handle the first upgrade. Preserve the existing SI Remote Data folder when manually upgrading.
+
+All 76 automated tests pass locally; a native Windows launch checked explicit data-folder handling. CI checks the same arguments in native Intel Mac launch. Actual Mac Settings UI, Gatekeeper approval and Apple Silicon runtime remain unverified. SI Remote Admin remains v0.4.0; load signed release 0.4.10 once its verified manifest is attached.
 
 ## Mac approval guide (v0.4.9)
 
