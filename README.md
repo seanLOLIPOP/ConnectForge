@@ -14,28 +14,6 @@ Active sessions keep the Electron renderer unthrottled when the host window is h
 
 Validation: 29 automated tests; direct and Cloudflare TURN sessions on Windows; shared clipboard in both paths; hidden host capture; 1,000-move bursts coalesced into one motion message; interoperability with actual v0.4.0 hosts and viewers. No new Mac build was produced for 0.4.1 because the build Mac was unavailable. Full macOS/Linux remote-session performance remains unverified. Sample comparisons are local test observations, not end-to-end latency guarantees.
 
-## Online updates and the admin app
-
-Install **0.4.0 or later once manually** on each computer to enable online updates. Older versions cannot receive update offers. Use the latest client for a first setup; existing 0.4.0 clients can receive 0.4.1 through the admin app. Portable client and admin downloads are separate.
-
-1. Open **SI Remote Admin** and sign in with the SI account authorized by the server administrator. Passwords are never stored by the admin app.
-2. Enter a published version (for example `0.4.1`) and click **Load signed release**. It loads `update-manifest.json` from this repository's GitHub release and verifies the pinned Ed25519 public key.
-3. Select registered computers and a newer compatible release, then click **Push to selected computers**. Offline devices receive the offer after reconnecting. Cancel offers from the admin table before the user approves restart.
-4. A client asks before downloading and again before restarting. **Later** keeps the app running; **This computer → Check update offers** reopens a postponed offer. Active remote sessions block installation.
-5. The new portable app is saved beside the previous app. Account settings and encrypted clipboard history remain in **SI Remote Data**. Once the new version has launched, opening the previous updater-capable app redirects to the verified newer app. Keep the downloaded artifact in place for this verification. The old app remains available with `--skip-update-redirect` for recovery. Version 0.3 and older shortcuts must be replaced manually.
-
-Windows updates use the portable EXE; Linux uses the x64 AppImage (FUSE and OS sandbox requirements still apply). macOS updates extract a versioned app beside the old app, verify its bundle signature, and retain macOS quarantine checks. **Online updating does not solve the existing Mac “damaged”/Gatekeeper issue.** Developer ID signing and Apple notarization are still needed for smooth public Mac distribution. If the new app is blocked, the previous app is retained. Reopen it and ask the administrator to resend the update.
-
-Update administration covers registered device names, owner IDs, OS/architecture, installed versions, online status and update progress. It does not grant cross-account remote desktop or clipboard access. An offline computer's last status can be stale. Installed is recorded when the new app signs in and registers, so users who did not remember sign-in must sign in again first. Version 0.4.0 is the bootstrap release; push offers become useful when a newer signed release is published.
-
-### Publishing an update
-
-Build all client platforms, collect their artifacts in `dist/`, and run `node scripts/sign-update.mjs` with `SI_UPDATE_SIGNING_KEY` pointing to the release signing private key **outside this project**. Upload `update-manifest.json` with the artifacts to the matching GitHub release tag. The private key is never uploaded, bundled, or stored on the 5080 service. Back it up securely; losing it requires a manual trust-key migration. The public key is pinned in `assets/update-public.pem` on clients and server. Importing a different payload for an existing release version is rejected. Signed manifests cover platform, architecture, filename, version, byte size, and SHA-256; clients reject downgrades and altered artifacts.
-
-Server configuration uses `updateAdminEmails` as a list of trusted SI account emails, checked against the fresh SI identity record on every admin request. Default is no update administrators. Existing session/password-change revocation applies to the admin API too. Admin and update actions are audited in the service database. The source includes 29 automated account, clipboard, update security, migration and restart-consent tests.
-
-Build the portable admin app with `node scripts/build-admin.mjs` on each native platform. macOS builds must run on macOS. Admin app updates are manual in this release.
-
 ## GPU acceleration
 
 v0.3.0 prefers H.264 to use the operating system’s hardware encoder and decoder when available, keeping other codecs for compatibility. The host sharing banner shows GPU/CPU encoding; the viewer toolbar shows GPU/CPU decoding, codec, frame rate, and network round-trip time. An unknown status means WebRTC did not report acceleration. GPU availability depends on the OS, driver, and hardware; H.264 can also run in software. This change does not require a GPU on the relay server or guarantee lower latency. Capture now requests up to 60 FPS; network/encoder adaptation may lower the actual rate or resolution. Windows NVIDIA H.264 encoding and D3D11 decoding were verified; Linux/macOS hardware acceleration has not been verified.
