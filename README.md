@@ -1,8 +1,12 @@
 # ConnectForge (SI Remote) — portable preview
 
-Download the [v0.4.11 portable preview](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.11) for Windows, Linux, Intel Mac and Apple Silicon Mac. The [portable admin app remains in v0.4.0](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.0). Mac ZIPs are built and verified on GitHub-hosted macOS. Install v0.4.4 manually once to use the new updater.
+Download the [v0.4.12 portable preview](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.12) for Windows, Linux, Intel Mac and Apple Silicon Mac. The [portable admin app remains in v0.4.0](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.0). Mac ZIPs are built and verified on GitHub-hosted macOS. Install v0.4.4 manually once to use the new updater.
 
 Built October 20, 2026. A working remote desktop preview with SI account login, owned-device discovery, approval or explicitly enabled unattended access, screen streaming, native keyboard/mouse control, direct encrypted WebRTC connections, and an authenticated TURN relay on the 5080 server.
+
+## Scrollable Files page (v0.4.12)
+
+The Files page scrolls vertically when content does not fit. Each file list scrolls separately, and panes stack on narrow windows. Copy buttons and transfer controls remain reachable. Native Windows layout checks passed at 1220×810, 920×650 and 640×480 without horizontal overflow. Mac/Linux visual checks remain unverified. Update the app showing Files to v0.4.12; its peer needs v0.4.11 or newer.
 
 ## Session file browser and transfers (v0.4.11)
 
