@@ -76,6 +76,14 @@
   let remainder=0,last=null;
   return {push(delta){if(!Number.isFinite(delta)||delta===0)return 0;const time=now();if(last!==null&&time-last>250)remainder=0;last=time;const pixels=wheelPixels(delta);remainder+=platform==='win32'?pixels*1.2:platform==='linux'?pixels/100:pixels;const amount=Math.trunc(remainder+Math.sign(remainder)*1e-9);remainder-=amount;return amount;},reset(){remainder=0;last=null;}};
  }
+ function qualityProfile(profile,quality,track){
+  const heights=[0,720,1080,1440,2160],bitrates=[0,500000,1000000,2000000,4000000,8000000,16000000];
+  if(!quality||!heights.includes(quality.height)||!bitrates.includes(quality.bitrate))return {...profile};
+  const result={...profile};
+  if(quality.bitrate)result.maxBitrate=quality.bitrate;
+  if(quality.height){const settings=track?.getSettings?.()||{},size=Math.max(settings.height||1080,(settings.width||1920)*9/16);result.scaleResolutionDownBy=Math.max(1,size/quality.height);}
+  return result;
+ }
  function lowDelayReceiver(receiver){try{if(receiver&&'jitterBufferTarget' in receiver)receiver.jitterBufferTarget=0;}catch{}}
  async function tuneSender(sender,{relay=false,profile}={}){
   if(sender.track?.kind!=='video')return;
@@ -86,5 +94,5 @@
   try{await sender.setParameters(params);}catch{delete params.degradationPreference;try{await sender.setParameters(params);}catch{}}
   try{if(sender.track.applyConstraints&&sender.track.getConstraints)await sender.track.applyConstraints({...sender.track.getConstraints(),frameRate:{ideal:settings.maxFramerate,max:settings.maxFramerate}});}catch{}
  }
- return {wheelPixels,createScrollAccumulator,createPointerReceiver,createPointerSender,createInputForwarder,createVideoController,videoPressure,lowDelayReceiver,tuneSender};
+ return {qualityProfile,wheelPixels,createScrollAccumulator,createPointerReceiver,createPointerSender,createInputForwarder,createVideoController,videoPressure,lowDelayReceiver,tuneSender};
 });

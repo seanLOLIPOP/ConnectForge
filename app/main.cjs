@@ -79,6 +79,7 @@ function connectSocket(){
 }
 const trusted=event=>win&&!win.isDestroyed()&&event.sender===win.webContents&&event.senderFrame===win.webContents.mainFrame;
 function handle(name,fn){ipcMain.handle('si:'+name,async(event,...args)=>{if(!trusted(event))throw Error('Untrusted window');try{return {ok:true,value:await fn(...args)};}catch(e){return {ok:false,error:e.message};}});}
+handle('fullscreen',enabled=>{if(typeof enabled!=='boolean')throw Error('Invalid fullscreen state');win.setFullScreen(enabled);return enabled;});
 handle('state',()=>state());
 handle('updates',async()=>{if(!user)throw Error('Sign in to check update offers');await updater.check(true);});
 handle('login',async({email,password,remember})=>{
@@ -118,10 +119,11 @@ if(!app.requestSingleInstanceLock())app.quit();else{
     pointerInput=createPointerReceiver((event,bounds)=>input.apply(event,bounds));
     for(const event of ['display-added','display-removed','display-metrics-changed'])screen.on(event,()=>{inputBounds=null;});
     setInterval(()=>{if(user)updater.check().catch(()=>{});},60000).unref();
-    session.defaultSession.setPermissionRequestHandler((webContents,permission,callback)=>callback(webContents===win?.webContents&&['media','display-capture'].includes(permission)));
+    session.defaultSession.setPermissionRequestHandler((webContents,permission,callback)=>callback(webContents===win?.webContents&&['media','display-capture','fullscreen'].includes(permission)));
     session.defaultSession.setDisplayMediaRequestHandler(async(req,callback)=>{if(!hostSession||!selectedSource||req.frame!==win.webContents.mainFrame)return callback({});callback({video:selectedSource});},{useSystemPicker:false});
     win=new BrowserWindow({width:1220,height:810,minWidth:920,minHeight:650,backgroundColor:'#0b101b',title:'SI Remote',icon:path.join(assets,'icon.png'),autoHideMenuBar:true,webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,webSecurity:true}});
     win.webContents.setWindowOpenHandler(()=>({action:'deny'}));win.webContents.on('will-navigate',e=>e.preventDefault());
+    win.on('enter-full-screen',()=>emit('fullscreen',{enabled:true}));win.on('leave-full-screen',()=>emit('fullscreen',{enabled:false}));
     win.on('close',e=>{if(!quitting&&user&&config.unattended){e.preventDefault();win.hide();}});
     const icon=nativeImage.createFromPath(path.join(assets,'icon.png')).resize({width:24,height:24});
     tray=new Tray(icon);updateTray();tray.on('double-click',()=>{win.show();win.focus();});
@@ -134,4 +136,3 @@ if(!app.requestSingleInstanceLock())app.quit();else{
   app.on('before-quit',()=>{quitting=true;clearTimeout(reconnectTimer);clearInterval(heartbeat);endAll();socket?.close();cloudflare.stop();});
   app.on('window-all-closed',()=>{if(!config.unattended)app.quit();});
 }
-

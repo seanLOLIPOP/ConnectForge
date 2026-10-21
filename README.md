@@ -1,8 +1,14 @@
 # ConnectForge (SI Remote) — portable preview
 
-Download the [v0.4.7 portable preview](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.7) for Windows, Linux, Intel Mac and Apple Silicon Mac. The [portable admin app remains in v0.4.0](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.0). Mac ZIPs are built and verified on GitHub-hosted macOS. Install v0.4.4 manually once to use the new updater.
+Download the [v0.4.8 portable preview](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.8) for Windows, Linux, Intel Mac and Apple Silicon Mac. The [portable admin app remains in v0.4.0](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.0). Mac ZIPs are built and verified on GitHub-hosted macOS. Install v0.4.4 manually once to use the new updater.
 
 Built October 20, 2026. A working remote desktop preview with SI account login, owned-device discovery, approval or explicitly enabled unattended access, screen streaming, native keyboard/mouse control, direct encrypted WebRTC connections, and an authenticated TURN relay on the 5080 server.
+
+## Fullscreen and stream controls (v0.4.8)
+
+Fullscreen uses native window control; Escape and disconnect exit fullscreen. The session toolbar adds resolution (Auto, 720p, 1080p, 1440p, 2160p) and bitrate limits (Auto, 0.5–16 Mbps). Both apps must be v0.4.8; older hosts leave the selectors disabled. Changes apply during the session and preserve aspect ratio without upscaling. Resolution controls the stream, not the desktop monitor. Manual choices persist through automatic profile changes; Auto restores adaptation.
+
+All 68 automated tests pass locally. A Windows Electron smoke check passed fullscreen entry/exit and selector delivery to the host, including preservation through adaptation and legacy disabling. Mac/Linux fullscreen and live video changes still require real-device verification. SI Remote Admin remains v0.4.0; load signed release 0.4.8 once the verified manifest is attached.
 
 ## Mac update approval (v0.4.7)
 
