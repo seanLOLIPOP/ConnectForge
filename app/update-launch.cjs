@@ -5,7 +5,7 @@ function preflight(target,platform,{run=execFileSync,exists=fs.existsSync}={}){
  if(!exists(target))throw Error('The downloaded app is missing. Download the update again.');
  if(platform==='darwin'){
   run('/usr/bin/codesign',['--verify','--deep','--strict',target],{timeout:60000});
-  try{run('/usr/sbin/spctl',['--assess','--type','execute',target],{timeout:30000,stdio:'pipe'});}catch{throw Error('macOS has not approved this downloaded app. The current app will stay open. Open the new app manually and approve it in System Settings if macOS permits. Unattended Mac updates require Developer ID signing and Apple notarization.');}
+  try{run('/usr/sbin/spctl',['--assess','--type','execute',target],{timeout:30000,stdio:'pipe'});}catch{throw Object.assign(Error('Mac approval required on the target computer. macOS has not approved this downloaded app. The current app will stay open. Use the local approval dialog to reveal the new app and open Privacy & Security. Unattended Mac updates require Developer ID signing and Apple notarization.'),{code:'MAC_APPROVAL_REQUIRED',target});}
  }
  if(platform==='linux'&&target.endsWith('.AppImage')){
   {
@@ -44,4 +44,3 @@ function relaunch(app,target,platform,root){
  app.quit();
 }
 module.exports={preflight,relaunch};
-

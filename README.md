@@ -1,8 +1,14 @@
 # ConnectForge (SI Remote) — portable preview
 
-Download the [v0.4.6 portable preview](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.6) for Windows, Linux, Intel Mac and Apple Silicon Mac. The [portable admin app remains in v0.4.0](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.0). Mac ZIPs are built and verified on GitHub-hosted macOS. Install v0.4.4 manually once to use the new updater.
+Download the [v0.4.7 portable preview](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.7) for Windows, Linux, Intel Mac and Apple Silicon Mac. The [portable admin app remains in v0.4.0](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.0). Mac ZIPs are built and verified on GitHub-hosted macOS. Install v0.4.4 manually once to use the new updater.
 
 Built October 20, 2026. A working remote desktop preview with SI account login, owned-device discovery, approval or explicitly enabled unattended access, screen streaming, native keyboard/mouse control, direct encrypted WebRTC connections, and an authenticated TURN relay on the 5080 server.
+
+## Mac update approval (v0.4.7)
+
+Admin offers now give a clear Mac approval required status detail when Gatekeeper blocks a download. The target Mac keeps its current app open and offers buttons to reveal the downloaded app or open Privacy & Security. Approval remains a local user action. Quarantine is set once on initial extraction, so retrying no longer replaces an existing approval. Signature and Gatekeeper checks remain enabled.
+
+Install and approve v0.4.7 manually once to get the new flow. SI Remote Admin remains v0.4.0; load signed release 0.4.7. Later Mac updates may still need local approval and manual opening. Fully automatic Mac installation needs Developer ID signing and Apple notarization. All 65 automated tests pass locally; Mac native update completion remains unverified.
 
 ## Scroll fix (v0.4.6)
 

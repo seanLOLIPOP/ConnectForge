@@ -4,7 +4,8 @@ const {spawn,execFileSync}=require('node:child_process');
 const {verify,newer,filename}=require('./update-manifest.cjs');
 const {allowedURL,download,matches}=require('./update-download.cjs');
 const {preflight,relaunch}=require('./update-launch.cjs');
-function createUpdater({app,dialog,window,request,publicKey,root,dataDir,busy,identity,onProgress=()=>{},prepare=preflight,launch=relaunch}){
+const {stageMacUpdate,showMacApproval}=require('./mac-update.cjs');
+function createUpdater({app,dialog,window,request,publicKey,root,dataDir,busy,identity,onProgress=()=>{},prepare=preflight,launch=relaunch,approval=(dialog,window,target)=>showMacApproval(dialog,window,target,require('electron').shell)}){
  let running=false,installing=false,lastOffered=null;
  const current=()=>app.getVersion();
  const receiptFile=path.join(dataDir,'update-last.json');
@@ -39,18 +40,7 @@ function createUpdater({app,dialog,window,request,publicKey,root,dataDir,busy,id
    try{if(!fs.existsSync(file)||!await matches(file,asset)){if(fs.existsSync(file))throw Error('A different file already exists at the update destination');await download(asset.url,part,asset,onProgress);fs.renameSync(part,file);}}finally{onProgress({stage:'idle'});}
    let target=file;
    if(process.platform==='linux')fs.chmodSync(file,0o755);
-   if(process.platform==='darwin'){
-    target=path.join(root,'SI Remote-'+m.version+'.app');
-    if(!fs.existsSync(target)){
-     const temp=fs.mkdtempSync(path.join(root,'.si-update-'));
-     // The ZIP is signed by the release publisher. It is extracted only into a new folder.
-     execFileSync('/usr/bin/ditto',['-x','-k',file,temp],{timeout:120000});const extracted=path.join(temp,'SI Remote.app');
-     execFileSync('/usr/bin/codesign',['--verify','--deep','--strict',extracted],{timeout:60000});
-     fs.renameSync(extracted,target);try{fs.rmdirSync(temp);}catch{}
-    }
-    execFileSync('/usr/bin/codesign',['--verify','--deep','--strict',target],{timeout:60000});
-    execFileSync('/usr/bin/xattr',['-w','com.apple.quarantine','0083;'+Math.floor(Date.now()/1000).toString(16)+';ConnectForge;',target]);
-   }
+   if(process.platform==='darwin')target=stageMacUpdate(file,root,m.version);
    target=prepare(target,process.platform)||target;
    await status(job,'ready');
    const confirm=await dialog.showMessageBox(window(),{type:'question',title:'Update ready',message:'Restart into SI Remote '+m.version+' now?',detail:'The download passed signature and checksum verification. The current app stays available as a backup. On macOS, system approval may also be required.',buttons:['Restart now','Later'],defaultId:1,cancelId:1,noLink:true});
@@ -64,10 +54,9 @@ function createUpdater({app,dialog,window,request,publicKey,root,dataDir,busy,id
    await status(job,'installing');
    fs.writeFileSync(receiptFile,JSON.stringify({envelope:job.envelope,active:false}),{mode:0o600});
    launch(app,target,process.platform,root);
-  }catch(e){installing=false;if(job)await status(job,'failed',e.message).catch(()=>{});if(interactive||job)await dialog.showMessageBox(window(),{type:'error',message:'Could not update SI Remote',detail:e.message});}
+  }catch(e){installing=false;if(job)await status(job,'failed',e.message).catch(()=>{});if(e.code==='MAC_APPROVAL_REQUIRED')await approval(dialog,window(),e.target);else if(interactive||job)await dialog.showMessageBox(window(),{type:'error',message:'Could not update SI Remote',detail:e.message});}
   finally{running=false;}
  }
  return {check,startup,isInstalling:()=>installing};
 }
 module.exports={createUpdater,allowedURL,download,matches};
-
