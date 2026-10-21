@@ -1,0 +1,63 @@
+name: Portable Mac release
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [.github/workflows/macos-release.yml, scripts/verify-mac-release.mjs]
+permissions:
+  contents: read
+concurrency:
+  group: portable-mac-release
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: macos-15-intel
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify release source
+        run: |
+          test "$(node -p 'require("./package.json").version')" = '0.4.1'
+          git diff --exit-code v0.4.1 -- app admin assets server package.json pnpm-lock.yaml pnpm-workspace.yaml scripts/build-mac.mjs scripts/download-cloudflared.mjs
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
+      - name: Install dependencies
+        run: |
+          npm install --global pnpm@11.25.0
+          pnpm install --frozen-lockfile
+      - run: pnpm test
+      - name: Download verified Cloudflare helpers
+        run: node scripts/download-cloudflared.mjs
+      - name: Build and verify both architectures
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: pnpm build:mac
+      - name: Verify distribution ZIPs and launch native app
+        run: node scripts/verify-mac-release.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-0.4.1
+          path: |
+            dist/SI-Remote-0.4.1-macOS-*.zip
+            dist/SHA256SUMS-macOS-0.4.1.txt
+            dist/macOS-build-0.4.1.json
+          if-no-files-found: error
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos-0.4.1
+          path: release
+      - name: Add Mac downloads to existing public release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release upload v0.4.1 release/*
+
