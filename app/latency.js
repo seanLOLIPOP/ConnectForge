@@ -70,6 +70,12 @@
   const delta=(field,count)=>{if(!video||!previous||video.id!==previous.id)return undefined;const n=video[count]-previous[count],value=video[field]-previous[field];return n>0&&Number.isFinite(value)&&value>=0?value*1000/n:undefined;};
   return {queueMs:delta('totalPacketSendDelay','packetsSent'),encodeMs:delta('totalEncodeTime','framesEncoded'),bandwidthLimited:video?.qualityLimitationReason==='bandwidth'};
  }
+ // Wheel events use pixels (0), lines (1), or pages (2). Keep the wire value in pixels.
+ function wheelPixels(delta,mode=0,pageHeight=800){if(!Number.isFinite(delta)||![0,1,2].includes(mode))return 0;const scale=mode===1?16:mode===2?(Number.isFinite(pageHeight)&&pageHeight>0?pageHeight:800):1;return Math.max(-100,Math.min(100,delta*scale));}
+ function createScrollAccumulator(platform,{now=()=>Date.now()}={}){
+  let remainder=0,last=null;
+  return {push(delta){if(!Number.isFinite(delta)||delta===0)return 0;const time=now();if(last!==null&&time-last>250)remainder=0;last=time;const pixels=wheelPixels(delta);remainder+=platform==='win32'?pixels*1.2:platform==='linux'?pixels/100:pixels;const amount=Math.trunc(remainder+Math.sign(remainder)*1e-9);remainder-=amount;return amount;},reset(){remainder=0;last=null;}};
+ }
  function lowDelayReceiver(receiver){try{if(receiver&&'jitterBufferTarget' in receiver)receiver.jitterBufferTarget=0;}catch{}}
  async function tuneSender(sender,{relay=false,profile}={}){
   if(sender.track?.kind!=='video')return;
@@ -80,5 +86,5 @@
   try{await sender.setParameters(params);}catch{delete params.degradationPreference;try{await sender.setParameters(params);}catch{}}
   try{if(sender.track.applyConstraints&&sender.track.getConstraints)await sender.track.applyConstraints({...sender.track.getConstraints(),frameRate:{ideal:settings.maxFramerate,max:settings.maxFramerate}});}catch{}
  }
- return {createPointerReceiver,createPointerSender,createInputForwarder,createVideoController,videoPressure,lowDelayReceiver,tuneSender};
+ return {wheelPixels,createScrollAccumulator,createPointerReceiver,createPointerSender,createInputForwarder,createVideoController,videoPressure,lowDelayReceiver,tuneSender};
 });
