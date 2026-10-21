@@ -43,7 +43,7 @@ function addScreenTrack(pc,track,stream){
 }
 function peer(s,relay=false){
   if(s.role==='host')window.si.release(s.id).catch(()=>{});
-  s.pointerSender?.dispose();s.pointerSender=null;s.motionChannel?.close();s.motionChannel=null;s.peerInputVersion=0;s.bufferSample=null;s.controlRTT=null;s.tunedRelay=null;
+  s.pointerSender?.dispose();s.pointerSender=null;s.inputForwarder?.dispose();s.inputForwarder=null;s.motionChannel?.close();s.motionChannel=null;s.peerInputVersion=0;s.bufferSample=null;s.controlRTT=null;s.tunedRelay=null;s.videoController=null;s.pressureSample=null;
   if(s.clipboardEnabled)window.si.clipboardEnable({session:s.id,enabled:false}).catch(()=>{});
   s.clipboardEnabled=false;s.peerClipboardEnabled=false;s.clipboardChannel=null;s.peerClipboard=false;
   const pc=new RTCPeerConnection({iceServers:s.iceServers,iceTransportPolicy:relay?'relay':'all'});s.pc=pc;s.candidates=[];s.remoteReady=false;s.relay=relay;
@@ -60,6 +60,11 @@ function peer(s,relay=false){
   clearTimeout(s.timeout);s.timeout=setTimeout(()=>{if(pc.connectionState!=='connected')retryRelay(s);},20000);
   return pc;
 }
+function forwardInput(s,event){
+  if(!s.inputForwarder)s.inputForwarder=SILatency.createInputForwarder({active:()=>current===s,send:event=>event.kind==='release'?window.si.release(s.id):window.si.input({session:s.id,event})});
+  if(s.peerInputVersion===2)s.inputForwarder.forward(event);
+  else if(event.kind==='release')window.si.release(s.id).catch(()=>{});else window.si.input({session:s.id,event}).catch(()=>{});
+}
 function bindChannel(s,channel){
   s.pointerSender?.dispose();
   s.channel=channel;channel.onopen=()=>{if(s.role==='viewer'){$('video-area').focus();$('viewer-message').hidden=true;}};
@@ -67,23 +72,23 @@ function bindChannel(s,channel){
     if(current!==s||s.channel!==channel||typeof e.data!=='string'||e.data.length>1024)return;
     if(performance.now()-windowStart>1000){count=0;windowStart=performance.now();}if(++count>300)return;
     try{const event=JSON.parse(e.data);
-      if(event.kind==='ping'&&s.role==='host'&&s.peerInputVersion===2&&Number.isFinite(event.id)){channel.send(JSON.stringify({kind:'pong',id:event.id}));return;}
+      if(event.kind==='ping'&&s.role==='host'&&s.peerInputVersion===2&&Number.isFinite(event.id)){window.si.input({session:s.id,event:{kind:'probe'}}).then(()=>{if(current===s&&s.channel===channel&&channel.readyState==='open')channel.send(JSON.stringify({kind:'pong',id:event.id}));}).catch(()=>{});return;}
       if(event.kind==='pong'&&s.role==='viewer'){if(event.id===s.pingAt)s.controlRTT=performance.now()-event.id;return;}
       if(s.role!=='host')return;
-      if(event.kind==='release')window.si.release(s.id).catch(()=>{});else window.si.input({session:s.id,event}).catch(()=>{});
+      forwardInput(s,event);
     }catch{}
   };
-  channel.onclose=()=>{if(s.role==='host'&&current===s&&s.channel===channel)window.si.release(s.id).catch(()=>{});};
+  channel.onclose=()=>{if(s.role==='host'&&current===s&&s.channel===channel){s.inputForwarder?.dispose();s.inputForwarder=null;window.si.release(s.id).catch(()=>{});}};
   if(s.role==='viewer')s.pointerSender=SILatency.createPointerSender({
     modern:()=>s.peerInputVersion===2,
     sendReliable:event=>{if(current!==s||channel.readyState!=='open')return false;channel.send(JSON.stringify(event));return true;},
-    sendMotion:event=>{if(current!==s)return true;const c=s.motionChannel?.readyState==='open'?s.motionChannel:channel;if(c.readyState!=='open'||c.bufferedAmount>(c===channel?4096:1024))return false;c.send(JSON.stringify(event));return true;},
-    schedule:fn=>requestAnimationFrame(fn),cancel:id=>cancelAnimationFrame(id),idleSchedule:fn=>setTimeout(fn,80),idleCancel:id=>clearTimeout(id)
+    sendMotion:event=>{if(current!==s)return true;const c=s.motionChannel?.readyState==='open'?s.motionChannel:channel;if(c.readyState!=='open'||c.bufferedAmount>(c===channel?1024:256))return false;c.send(JSON.stringify(event));return true;},
+    immediate:true,now:()=>performance.now(),schedule:fn=>setTimeout(fn,8),cancel:id=>clearTimeout(id),idleSchedule:fn=>setTimeout(fn,80),idleCancel:id=>clearTimeout(id)
   });
 }
 function bindMotion(s,channel){
   if(s.motionChannel){channel.close();return;}s.motionChannel=channel;let count=0,start=performance.now();
-  channel.onmessage=e=>{if(current!==s||s.motionChannel!==channel||s.role!=='host'||typeof e.data!=='string'||e.data.length>256)return;if(performance.now()-start>1000){count=0;start=performance.now();}if(++count>240)return;try{const event=JSON.parse(e.data);if(event.kind==='move'&&Number.isSafeInteger(event.seq)&&event.seq>=0)window.si.input({session:s.id,event}).catch(()=>{});}catch{}};
+  channel.onmessage=e=>{if(current!==s||s.motionChannel!==channel||s.role!=='host'||s.channel?.readyState!=='open'||typeof e.data!=='string'||e.data.length>256)return;if(performance.now()-start>1000){count=0;start=performance.now();}if(++count>240)return;try{const event=JSON.parse(e.data);if(event.kind==='move'&&Number.isSafeInteger(event.seq)&&event.seq>=0)forwardInput(s,event);}catch{}};
 }
 let clipboardState={entries:[],persistent:false,enabled:false};
 function clipboardStatus(){
@@ -156,9 +161,9 @@ function videoStats(stats,role){
   return [codec,Number.isFinite(video.framesPerSecond)?Math.round(video.framesPerSecond)+' FPS':'',hardware===true?'GPU '+action:hardware===false?'CPU '+action:action+' unknown'].filter(Boolean).join(' · ');
 }
 function updateStats(s){
-  clearInterval(statsTimer);const pc=s.pc;
+  clearInterval(statsTimer);const pc=s.pc;let busy=false;
   const refresh=async()=>{
-    if(current!==s||s.pc!==pc)return;
+    if(current!==s||s.pc!==pc||busy)return;busy=true;
     try{
       const stats=await pc.getStats();if(current!==s||s.pc!==pc)return;
       const media=videoStats(stats,s.role);
@@ -166,19 +171,23 @@ function updateStats(s){
       if(!pair)stats.forEach(r=>{if(r.type==='candidate-pair'&&r.state==='succeeded'&&r.nominated)pair=r;});
       if(s.role==='host'){
         $('sharing-stats').textContent=media;
-        if(pair){const relay=[stats.get(pair.localCandidateId)?.candidateType,stats.get(pair.remoteCandidateId)?.candidateType].includes('relay');if(s.tunedRelay!==relay){s.tunedRelay=relay;for(const sender of pc.getSenders())await SILatency.tuneSender(sender,{relay});}}
+        if(pair){const relay=[stats.get(pair.localCandidateId)?.candidateType,stats.get(pair.remoteCandidateId)?.candidateType].includes('relay');if(s.tunedRelay!==relay){s.tunedRelay=relay;s.videoController=SILatency.createVideoController({relay});s.pressureSample=null;}
+          const video=[...stats.values()].find(r=>r.type==='outbound-rtp'&&r.kind==='video'&&r.framesEncoded>0),pressure=SILatency.videoPressure(video,s.pressureSample);s.pressureSample=video;
+          const profile=s.videoController.sample({...pressure,availableBitrate:pair.availableOutgoingBitrate});
+          if(profile){s.videoProfile=profile;for(const sender of pc.getSenders())await SILatency.tuneSender(sender,{relay,profile});}
+        }
         return;
       }
       if(pair){const local=stats.get(pair.localCandidateId),remote=stats.get(pair.remoteCandidateId);$('route').textContent=[local?.candidateType,remote?.candidateType].includes('relay')?'Encrypted relay':'Direct · encrypted';}
       if(s.peerInputVersion===2&&s.channel?.readyState==='open'){s.pingAt=performance.now();s.channel.send(JSON.stringify({kind:'ping',id:s.pingAt}));}
       const inbound=[...stats.values()].find(r=>r.type==='inbound-rtp'&&r.kind==='video'&&r.framesDecoded>0),previous=s.bufferSample;
       let bufferMs;if(inbound){const frames=inbound.jitterBufferEmittedCount-(previous?.frames||0),delay=inbound.jitterBufferDelay-(previous?.delay||0);if(frames>0)bufferMs=delay*1000/frames;s.bufferSample={frames:inbound.jitterBufferEmittedCount,delay:inbound.jitterBufferDelay};}
-      $('viewer-stats').textContent=[Number.isFinite(pair?.currentRoundTripTime)?Math.round(pair.currentRoundTripTime*1000)+' ms RTT':'',media,Number.isFinite(bufferMs)?Math.round(bufferMs)+' ms buffer':'',Number.isFinite(s.controlRTT)?Math.round(s.controlRTT)+' ms control':''].filter(Boolean).join(' · ');
-    }catch{}
+      const display=$('remote-video');$('viewer-stats').textContent=[Number.isFinite(pair?.currentRoundTripTime)?Math.round(pair.currentRoundTripTime*1000)+' ms RTT':'',media,display.videoWidth?display.videoWidth+'×'+display.videoHeight:'',Number.isFinite(bufferMs)?Math.round(bufferMs)+' ms buffer':'',Number.isFinite(s.controlRTT)?Math.round(s.controlRTT)+' ms control':''].filter(Boolean).join(' · ');
+    }catch{}finally{busy=false;}
   };refresh();statsTimer=setInterval(refresh,1500);
 }
 function closeLocal(){
-  const s=current;current=null;clearInterval(statsTimer);if(s){s.pointerSender?.dispose();clearTimeout(s.timeout);clearTimeout(s.disconnectTimer);s.pc&&(s.pc.onconnectionstatechange=null);s.motionChannel?.close();s.channel?.close();s.clipboardChannel?.close();s.pc?.close();for(const track of s.stream?.getTracks()||[])track.stop();window.si.clipboardEnable({session:s.id,enabled:false}).catch(()=>{});window.si.release(s.id).catch(()=>{});}clipboardStatus();
+  const s=current;current=null;clearInterval(statsTimer);if(s){s.pointerSender?.dispose();s.inputForwarder?.dispose();clearTimeout(s.timeout);clearTimeout(s.disconnectTimer);s.pc&&(s.pc.onconnectionstatechange=null);s.motionChannel?.close();s.channel?.close();s.clipboardChannel?.close();s.pc?.close();for(const track of s.stream?.getTracks()||[])track.stop();window.si.clipboardEnable({session:s.id,enabled:false}).catch(()=>{});window.si.release(s.id).catch(()=>{});}clipboardStatus();
   $('remote-video').srcObject=null;$('viewer').hidden=true;$('sharing-banner').hidden=true;$('route').textContent='Finding the best route';$('viewer-stats').textContent='';$('sharing-stats').textContent='';
 }
 $('disconnect').onclick=$('stop-sharing').onclick=attempt(async()=>{await window.si.end(current?.id);closeLocal();});
@@ -208,4 +217,3 @@ window.si.onEvent(b=>{
 window.si.state().then(render).catch(e=>toast(e.message));
 
 $('updates').onclick=attempt(()=>window.si.updates());
-

@@ -9,6 +9,11 @@ module.exports=async({win,app,fs,screen})=>{
    await until('state?.connected');
    await run(`window.si.settings({name:${JSON.stringify('SI Remote E2E '+role)},unattended:${role==='host'}}).then(render)`);
    if(role==='host'){
+     if(process.env.SI_REMOTE_SHAPED_E2E==='1'){
+       win.webContents.debugger.attach('1.3');
+       await win.webContents.debugger.sendCommand('Network.emulateNetworkConditionsByRule',{offline:false,matchedNetworkConditions:[{urlPattern:'',downloadThroughput:100000,uploadThroughput:100000,latency:50}]});
+       setTimeout(()=>win.webContents.debugger.sendCommand('Network.emulateNetworkConditionsByRule',{offline:false,matchedNetworkConditions:[]}).catch(()=>{}),28000).unref();
+     }
      fs.writeFileSync(file,JSON.stringify({ready:true,input:await run('state.input')}));
      if(clipboardTest){fs.rmSync(file+'.clipboard',{force:true});fs.rmSync(file+'.clipboard-error',{force:true});}
      if(clipboardTest)(async()=>{try{
@@ -28,7 +33,7 @@ module.exports=async({win,app,fs,screen})=>{
    await until('state.devices.some(d=>d.name==="SI Remote E2E host"&&d.online)');
    await run('window.si.connect(state.devices.find(d=>d.name==="SI Remote E2E host"&&d.online).id)');
    await until('current?.pc?.connectionState==="connected" && document.getElementById("remote-video").videoWidth>0');
-   await pause(2200);
+   await pause(process.env.SI_REMOTE_SHAPED_E2E==='1'?18000:2200);
    if(process.env.SI_REMOTE_EXPECT_LEGACY==='1'&&!await run('current.peerInputVersion===0 && !current.motionChannel'))throw Error('Legacy input fallback was not selected');
    const performanceResults=[];
    async function checkPerformance(relay){

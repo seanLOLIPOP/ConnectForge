@@ -1,6 +1,6 @@
 {
   "name": "si-remote",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "private": true,
   "description": "Portable remote desktop for SI accounts",
   "author": "SI",
@@ -104,4 +104,3 @@
     "@koromix/koffi-darwin-x64": "3.3.3"
   }
 }
-

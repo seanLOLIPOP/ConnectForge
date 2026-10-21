@@ -1,8 +1,14 @@
 # ConnectForge (SI Remote) — portable preview
 
-Download the [v0.4.4 portable preview](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.4) for Windows, Linux, Intel Mac and Apple Silicon Mac. The [portable admin app remains in v0.4.0](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.0). Mac ZIPs are built and verified on GitHub-hosted macOS. Install v0.4.4 manually once to use the new updater.
+Download the [v0.4.5 portable preview](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.5) for Windows, Linux, Intel Mac and Apple Silicon Mac. The [portable admin app remains in v0.4.0](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.0). Mac ZIPs are built and verified on GitHub-hosted macOS. Install v0.4.4 manually once to use the new updater.
 
 Built October 20, 2026. A working remote desktop preview with SI account login, owned-device discovery, approval or explicitly enabled unattended access, screen streaming, native keyboard/mouse control, direct encrypted WebRTC connections, and an authenticated TURN relay on the 5080 server.
+
+## Responsiveness update (v0.4.5)
+
+The first mouse movement sends immediately; subsequent movements coalesce every 8 ms. The host keeps only the newest pending motion while native input is busy. Clicks, scrolling and keys keep reliable delivery and bypass pending motion. Video adapts frame rate, resolution and bitrate when send queues, encoder time or bandwidth limitation show pressure, then recovers gradually. Idle bandwidth estimates alone do not lower quality. The viewer shows actual resolution, and control RTT includes the host input bridge.
+
+All 54 automated tests pass locally. Live Windows tests cover direct and Cloudflare TURN video, native input, background capture and shared clipboard. A direct local session retained full 1728×1080 capture; hotspot and Mac performance remain unverified. Update both ends for the full improvement. SI Remote Admin remains v0.4.0; load the signed 0.4.5 release to offer the new app. Older updater limitations still apply to the executable currently installed.
 
 ## Update restarting (v0.4.4)
 
@@ -24,7 +30,7 @@ All 36 automated tests pass on Windows, Linux and macOS. Seven download tests co
 
 v0.4.1 requests up to 60 FPS on direct connections (up to 30 FPS on relay) and favors reducing resolution over accumulating lag when the encoder or connection is constrained. The video bandwidth cap is 6 Mbps for direct sessions and 2 Mbps for relay sessions, with relay resolution scaled down by 1.5. The viewer requests the lowest available jitter buffer; this is a hint, not a guarantee of zero buffering. Actual FPS and latency depend on the capture system, GPU, network and relay path. The toolbar shows video buffer delay and control-channel round-trip time separately.
 
-Mouse movement uses a separate encrypted, unordered channel without retransmissions when both apps support it. Only the newest position is sent each frame; an idle position is also sent reliably after 80 ms so a lost final movement cannot leave the pointer behind. Clicks, keys, scrolling and key releases retain reliable ordered delivery. Clicks carry their own coordinates so out-of-order movement cannot change the target. Older clients use the compatible ordered input channel. Update both ends for the full improvement.
+Mouse movement uses a separate encrypted, unordered channel without retransmissions when both apps support it. Only the newest position is sent each interval; an idle position is also sent reliably after 80 ms so a lost final movement cannot leave the pointer behind. Clicks, keys, scrolling and key releases retain reliable ordered delivery. Clicks carry their own coordinates so out-of-order movement cannot change the target. Older clients use the compatible ordered input channel. Update both ends for the full improvement.
 
 Active sessions keep the Electron renderer unthrottled when the host window is hidden or minimized; normal throttling resumes after disconnect. Native input reuses display geometry until a display change instead of querying every mouse event.
 
