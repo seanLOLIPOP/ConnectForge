@@ -17,7 +17,7 @@ function stageMacUpdate(file,root,version,{run=execFileSync}={}){
  return target;
 }
 async function showMacApproval(dialog,window,target,shell){
- const response=await dialog.showMessageBox(window,{type:'info',title:'Mac approval required',message:'Approve this update on this Mac',detail:'The current app is still running. Admin cannot approve macOS security remotely.\n\n1. Show the downloaded app in Finder and try opening it.\n2. If blocked, open System Settings → Privacy & Security and choose Open Anyway for SI Remote, if macOS offers it.\n3. Once approved, open the new app, or return here and choose Check update offers to retry. Sign in with the same SI account if asked.\n\nDownloaded app: '+target,buttons:['Show downloaded app','Open Privacy & Security','Later'],defaultId:2,cancelId:2,noLink:true});
+ const response=await dialog.showMessageBox(window,{type:'info',title:'Mac approval required',message:'Approve this update on this Mac',detail:'The current app is still running. Admin cannot approve macOS security remotely.\n\n1. Show the downloaded app in Finder and try opening it.\n2. If blocked, open System Settings → Privacy & Security and choose Open Anyway for SI Remote, if macOS offers it.\n3. After approval, choose Check update offers here to retry. For manual opening, quit this current SI Remote app first, then open the downloaded new app. Sign in with the same SI account if asked.\n\nDownloaded app: '+target,buttons:['Show downloaded app','Open Privacy & Security','Later'],defaultId:2,cancelId:2,noLink:true});
  if(response.response===0)shell.showItemInFolder(target);
  if(response.response===1)await shell.openExternal('x-apple.systempreferences:com.apple.preference.security');
 }
