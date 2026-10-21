@@ -1,6 +1,6 @@
 # ConnectForge (SI Remote) — portable preview
 
-Download the [v0.4.1 portable preview](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.1) for Windows and Linux. The [Mac clients and portable admin app remain in v0.4.0](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.0). A new Mac build is pending access to an awake Mac; the responsiveness changes are included in source for all platforms.
+Download the [v0.4.1 portable preview](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.1) for Windows, Linux, Intel Mac and Apple Silicon Mac. The [portable admin app remains in v0.4.0](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.0). Mac ZIPs are built and verified on GitHub-hosted macOS; install them manually.
 
 Built October 20, 2026. A working remote desktop preview with SI account login, owned-device discovery, approval or explicitly enabled unattended access, screen streaming, native keyboard/mouse control, direct encrypted WebRTC connections, and an authenticated TURN relay on the 5080 server.
 
@@ -12,7 +12,7 @@ Mouse movement uses a separate encrypted, unordered channel without retransmissi
 
 Active sessions keep the Electron renderer unthrottled when the host window is hidden or minimized; normal throttling resumes after disconnect. Native input reuses display geometry until a display change instead of querying every mouse event.
 
-Validation: 29 automated tests; direct and Cloudflare TURN sessions on Windows; shared clipboard in both paths; hidden host capture; 1,000-move bursts coalesced into one motion message; interoperability with actual v0.4.0 hosts and viewers. No new Mac build was produced for 0.4.1 because the build Mac was unavailable. Full macOS/Linux remote-session performance remains unverified. Sample comparisons are local test observations, not end-to-end latency guarantees.
+Validation: 29 automated tests; direct and Cloudflare TURN sessions on Windows; shared clipboard in both paths; hidden host capture; 1,000-move bursts coalesced into one motion message; interoperability with actual v0.4.0 hosts and viewers. The v0.4.1 Mac ZIPs passed strict bundle/native-module/helper signature checks after extraction and an Intel launch check on GitHub-hosted macOS. Full macOS/Linux remote-session performance remains unverified. Sample comparisons are local test observations, not end-to-end latency guarantees.
 
 ## GPU acceleration
 
@@ -22,11 +22,11 @@ v0.3.0 prefers H.264 to use the operating system’s hardware encoder and decode
 
 **Windows:** run `SI-Remote-0.4.1-Windows-Portable.exe`. No installer. Alternatively extract the Windows ZIP and run `SI Remote.exe` from that folder.
 
-Windows builds are unsigned; macOS bundles are ad-hoc signed without Developer ID signing or notarization. These are private preview downloads, not signed public-store releases.
+Windows builds are unsigned; macOS bundles are ad-hoc signed without Developer ID signing or notarization. These are public preview downloads; they are not signed public-store releases.
 
 **Linux x64:** make the AppImage executable and run it, or extract the tar.gz and run `si-remote`. The tar.gz avoids the AppImage FUSE dependency. X11 is supported for remote control; Wayland remote input is not implemented in this preview. The desktop must include libX11 and libXtst. Electron also needs its usual GTK/NSS/desktop runtime libraries. Ubuntu's AppArmor/user-namespace sandbox restrictions can require a system-approved Electron sandbox configuration. Do not disable the Chromium sandbox to work around those restrictions.
 
-**macOS:** extract the matching Apple Silicon (arm64) or Intel (x64) ZIP and open SI Remote.app. v0.4.1 is built on macOS and ad-hoc signed with strict bundle/native-module/helper signature verification. Apple Silicon app launch and native input initialization passed on macOS 26.6; Intel runtime is untested. These builds are not Developer ID signed or notarized. macOS may block them until explicitly approved in Privacy & Security. Grant Screen Recording and Accessibility, then restart the app if macOS requests it. Apple signing/notarization is needed for normal public distribution.
+**macOS:** extract the matching Apple Silicon (arm64) or Intel (x64) ZIP and open SI Remote.app. v0.4.1 is built on macOS and ad-hoc signed with strict bundle/native-module/helper signature verification. The v0.4.1 Intel app launch passed on a GitHub-hosted macOS 15 runner; both architectures passed extracted ZIP integrity checks. Apple Silicon v0.4.0 launch previously passed on macOS 26.6, but v0.4.1 Apple Silicon runtime and full Mac remote sessions remain unverified. These builds are not Developer ID signed or notarized. macOS may block them until explicitly approved in Privacy & Security. Grant Screen Recording and Accessibility, then restart the app if macOS requests it. Apple signing/notarization is needed for normal public distribution.
 
 1. Sign in with your existing SI email and password. No new account is created.
 2. On the computer to control, open **This computer** and explicitly enable **Unattended access**, then save. Otherwise someone must accept each incoming request.
@@ -77,7 +77,7 @@ systemctl --user restart si-remote si-remote-turn
 systemctl --user stop si-remote si-remote-turn
 ```
 
-Certificates, signing keys, identity RPC token, TURN secret, passwords, and database files must never be bundled into downloads. The public server certificate is intentionally included in the client for TLS verification. A different server/certificate requires an updated client configuration or a normal publicly trusted certificate workflow. Automatic update delivery is not implemented.
+Certificates, signing keys, identity RPC token, TURN secret, passwords, and database files must never be bundled into downloads. The public server certificate is intentionally included in the client for TLS verification. A different server/certificate requires an updated client configuration or a normal publicly trusted certificate workflow. Signed update offers are implemented, but v0.4.1 should be installed manually: Windows automatic reopening failed its final test, and the immutable v0.4.1 update manifest does not include the later Mac downloads.
 
 ## Development
 
@@ -101,7 +101,7 @@ Verified on Windows: app launch, portable executable/ZIP packaging, native input
 
 Linux X11 app launch passed on Ubuntu 24.04 after the one-time administrator preparation of Chromium's sandbox helper. A Windows viewer controlling the Linux 5080 passed 1920×1080 screen streaming, direct and TURN relay paths, and native keyboard event delivery. The sandbox stayed enabled. On other Ubuntu hosts, run `bash scripts/prepare-linux-sandbox.sh /absolute/path/to/extracted-app` and enter the sudo password locally if required. Other Linux systems may support Chromium's user-namespace sandbox without this setup.
 
-v0.2.2 Mac packages are built and signed on macOS; Apple Silicon launch and native input initialization passed, while full Mac remote-control sessions and Intel runtime remain unverified. Full cross-platform sessions need device testing. This preview has no file transfer, audio, monitor picker, secure-desktop support, auto-start service, or automatic updates. It shares the first available display. It is a usable preview, not a fully validated RustDesk replacement.
+v0.4.1 Mac packages are built on GitHub-hosted macOS, with extracted bundle verification and an Intel launch check. Full Mac remote-control sessions and the new Apple Silicon binary's runtime remain unverified. Full cross-platform sessions need device testing. This preview has no file transfer, audio, monitor picker, secure-desktop support, auto-start service, or fully validated automatic update restarts. It shares the first available display. It is a usable preview, not a fully validated RustDesk replacement.
 
 ## Mac release integrity
 
