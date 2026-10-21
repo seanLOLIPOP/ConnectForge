@@ -1,8 +1,14 @@
 # ConnectForge (SI Remote) — portable preview
 
-Download the [v0.4.1 portable preview](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.1) for Windows, Linux, Intel Mac and Apple Silicon Mac. The [portable admin app remains in v0.4.0](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.0). Mac ZIPs are built and verified on GitHub-hosted macOS; install them manually.
+Download the [v0.4.2 portable preview](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.2) for Windows, Linux, Intel Mac and Apple Silicon Mac. The [portable admin app remains in v0.4.0](https://github.com/seanLOLIPOP/ConnectForge/releases/tag/v0.4.0). Mac ZIPs are built and verified on GitHub-hosted macOS. Install v0.4.2 manually once to use the improved downloader.
 
 Built October 20, 2026. A working remote desktop preview with SI account login, owned-device discovery, approval or explicitly enabled unattended access, screen streaming, native keyboard/mouse control, direct encrypted WebRTC connections, and an authenticated TURN relay on the 5080 server.
+
+## Update downloads (v0.4.2)
+
+The app shows download percentage, transferred size, speed and estimated remaining time. Interrupted downloads retry up to three times and resume saved partial data, including after reopening the app, when the release server supports byte ranges. Complete files are reused only after checksum verification. The signed manifest, URL allowlist, exact size and SHA-256 checks remain required. This reduces wasted downloads; actual speed still depends on GitHub, your ISP and hotspot connection.
+
+All 36 automated tests pass on Windows, Linux and macOS. Seven download tests cover interruption, resume, servers ignoring Range, invalid ranges, corrupt or oversized files and reuse of cached downloads. The progress panel passed an Electron UI check; a real 178 MB GitHub download and resumed download passed locally. Full update restart remains unverified. The v0.4.2 signed manifest includes Windows x64, Linux x64 and both Mac architectures; the older v0.4.1 manifest is unchanged. Use SI Remote Admin's **Load signed release** with `0.4.2`, then select target computers. Users approve downloading and restarting. The app installed before this update uses its older downloader to fetch v0.4.2, so a manual install is recommended initially.
 
 ## Responsiveness
 
@@ -20,7 +26,7 @@ v0.3.0 prefers H.264 to use the operating system’s hardware encoder and decode
 
 ## Run
 
-**Windows:** run `SI-Remote-0.4.1-Windows-Portable.exe`. No installer. Alternatively extract the Windows ZIP and run `SI Remote.exe` from that folder.
+**Windows:** run `SI-Remote-0.4.2-Windows-Portable.exe`. No installer. Alternatively extract the Windows ZIP and run `SI Remote.exe` from that folder.
 
 Windows builds are unsigned; macOS bundles are ad-hoc signed without Developer ID signing or notarization. These are public preview downloads; they are not signed public-store releases.
 
