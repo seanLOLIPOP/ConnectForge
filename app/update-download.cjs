@@ -9,7 +9,7 @@ function createDownloader({get=https.get,wait=ms=>new Promise(r=>setTimeout(r,ms
   allowedURL(url);
   const began=Date.now();let base=fs.existsSync(file)?fs.statSync(file).size:0,last=0;
   if(base>asset.bytes){fs.rmSync(file);base=0;}
-  function progress(received,stage='downloading',attempt=0){const now=Date.now();if(stage==='downloading'&&now-last<500&&received!==asset.bytes)return;last=now;const speed=(received-base)/Math.max((now-began)/1000,0.001);onProgress({stage,received,total:asset.bytes,percent:Math.floor(received/asset.bytes*100),bytesPerSecond:speed,secondsRemaining:speed>0?Math.ceil((asset.bytes-received)/speed):null,attempt});}
+  function progress(received,stage='downloading',attempt=0){const now=Date.now();if(stage==='downloading'&&now-last<500&&received!==asset.bytes)return;last=now;const speed=Math.max(0,received-base)/Math.max((now-began)/1000,0.001);onProgress({stage,received,total:asset.bytes,percent:Math.floor(received/asset.bytes*100),bytesPerSecond:speed,secondsRemaining:speed>0?Math.ceil((asset.bytes-received)/speed):null,attempt});}
   async function transfer(address,offset,redirects=0){
    if(redirects>5)throw Object.assign(Error('Too many download redirects'),{permanent:true});
    const u=allowedURL(address);
