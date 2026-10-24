@@ -55,19 +55,18 @@ jobs:
         run: |
           node scripts/verify-mac-release.mjs
           node scripts/verify-mac-release.mjs --admin
+      - name: Collect portable downloads
+        run: |
+          mkdir -p portable-release
+          shopt -s nullglob
+          files=(dist/*.exe dist/*.zip dist/*.AppImage dist/*.tar.gz dist-admin/*.exe dist-admin/*.zip dist-admin/*.AppImage)
+          cp "${files[@]}" portable-release/
+          for report in dist/macOS-build-*.json; do cp "$report" portable-release/; done
+          for report in dist-admin/macOS-build-*.json; do cp "$report" "portable-release/admin-$(basename "$report")"; done
       - uses: actions/upload-artifact@v4
         with:
           name: portable-${{ matrix.platform }}
-          path: |
-            dist/*.exe
-            dist/*.zip
-            dist/*.AppImage
-            dist/*.tar.gz
-            dist/macOS-build-*.json
-            dist-admin/*.exe
-            dist-admin/*.zip
-            dist-admin/*.AppImage
-            dist-admin/macOS-build-*.json
+          path: portable-release/*
           if-no-files-found: error
   publish:
     needs: build
