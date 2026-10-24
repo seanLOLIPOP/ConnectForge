@@ -94,5 +94,9 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           VERSION=$(node -p 'require("./package.json").version')
-          gh release create "v$VERSION" --target "$GITHUB_SHA" --title "ConnectForge v$VERSION — Multi-PC Workspace" --prerelease --notes-file RELEASE-NOTES.md
-          gh release upload "v$VERSION" release/*
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            gh release edit "v$VERSION" --title "ConnectForge v$VERSION - Restored SI FORGE Connection" --prerelease --notes-file RELEASE-NOTES.md
+          else
+            gh release create "v$VERSION" --target "$GITHUB_SHA" --title "ConnectForge v$VERSION - Restored SI FORGE Connection" --prerelease --notes-file RELEASE-NOTES.md
+          fi
+          gh release upload "v$VERSION" release/* --clobber
