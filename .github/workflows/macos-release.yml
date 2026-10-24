@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: [.github/workflows/macos-release.yml, app/**, scripts/verify-mac-release.mjs, test/update-download.test.mjs, package.json]
+    paths: [.github/workflows/macos-release.yml, app/**, admin/**, assets/**, scripts/build-admin.mjs, scripts/ci-release-metadata.mjs, scripts/verify-mac-release.mjs, test/update-download.test.mjs, package.json]
 permissions:
   contents: read
 concurrency:
@@ -46,9 +46,15 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: ${{ matrix.command }}
+      - name: Build portable Admin tools
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: node scripts/build-admin.mjs
       - name: Verify extracted Mac packages and native launch
         if: matrix.platform == 'macos'
-        run: node scripts/verify-mac-release.mjs
+        run: |
+          node scripts/verify-mac-release.mjs
+          node scripts/verify-mac-release.mjs --admin
       - uses: actions/upload-artifact@v4
         with:
           name: portable-${{ matrix.platform }}
@@ -58,6 +64,10 @@ jobs:
             dist/*.AppImage
             dist/*.tar.gz
             dist/macOS-build-*.json
+            dist-admin/*.exe
+            dist-admin/*.zip
+            dist-admin/*.AppImage
+            dist-admin/macOS-build-*.json
           if-no-files-found: error
   publish:
     needs: build
