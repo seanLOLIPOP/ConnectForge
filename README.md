@@ -114,14 +114,16 @@ Windows builds are unsigned; macOS bundles are ad-hoc signed without Developer I
 
 Keep the app running and the host awake. Closing the window leaves it in the tray only while signed in with unattended access enabled. **Quitting stops remote access.** This portable preview does not install a service or automatically start at boot. Login screens, Windows secure desktop/UAC prompts, and access before OS sign-in are outside this build's capabilities.
 
+## Restored server connection (v0.5.1)
+
+The SI FORGE server now hosts the connection service and reads the existing shared account database through private loopback RPC. Both ConnectForge hostnames use the SI FORGE Cloudflare tunnel. The old server certificate and device registry were unavailable after reinstalling Ubuntu. Install v0.5.1 manually once on each computer, then sign in with your existing SI account. Older clients cannot authenticate the new server certificate. Existing portable user data can be retained.
+
 ## Network scope
 
-The app connects through **connectforge.mcseanilog.com** using the existing **crafty-dashboard** Cloudflare tunnel on SERVER-A520I-AC (`192.168.4.99`). That machine and the 5080 must both remain running. The portable app includes a checksum-verified official Cloudflare helper, which runs silently as a child process; users do not need to install Cloudflare, open router ports, or sign in to a Cloudflare account.
+The app connects through **connectforge.mcseanilog.com** using the **si-forge** Cloudflare tunnel on the SI FORGE server (`192.168.7.231`). The old tunnel PC is no longer required. The portable app includes the official Cloudflare helper and verifies the server TLS certificate inside the tunnel.
 
-The two Cloudflare routes are raw TCP over secure WebSockets:
-
-* `connectforge.mcseanilog.com` → `192.168.4.68:8443` for login and signaling.
-* `connectforge-relay.mcseanilog.com` → `192.168.4.68:3478` for authenticated TURN TCP.
+* `connectforge.mcseanilog.com` â†’ loopback TCP 8443 for login/signaling.
+* `connectforge-relay.mcseanilog.com` â†’ loopback TCP 3478 for authenticated TURN.
 
 The helper binds only to loopback on the client. The app verifies the 5080's dedicated TLS certificate inside the tunnel, preserving API encryption without disabling certificate checks. Screen/control traffic stays protected by WebRTC encryption. Cloudflare's public STUN server discovers public addresses for direct connections. When direct access fails, both clients use TURN TCP through their Cloudflare bridges, with the 5080 forwarding the encrypted media. The TURN media ports only need to be reachable locally on the 5080 in this mode. These hostnames are app transports, not browser-based login websites.
 
